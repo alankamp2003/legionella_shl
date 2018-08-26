@@ -9,9 +9,15 @@ source("legionellaFuncs.R")
 init_data <- NULL
 
 # enables the download button with the passed key if the passed 
-# data (a list) is not null and not empty; otherwise disables the button
+# data (a list) is not null, not empty and none of the vectors 
+# in it are empty; otherwise disables the button
 toggleDLButton <- function(key, data) {
-  toggleState(key, !is.null(data) && length(data) > 0)
+  togl <- !is.null(data) && length(data) > 0
+  if (togl) {
+    k <- sapply(data, function(v) length(v) > 0)
+    togl <- sum(k) > 0
+  }
+  toggleState(key, togl)
 }
 
 # validates the data in the input fields
@@ -19,9 +25,9 @@ validateInput <- function(input) {
   if (is.null(input$file1)) {
     "Please choose a legionella data file"
   } else if (!is.numeric(input$coverage)) {
-    "Please enter a valid number as Coverage"
+    "Please enter a valid number as Seq Total % Coverage"
   } else if (!is.numeric(input$identity)) {
-    "Please enter a valid number as Identity"
+    "Please enter a valid number as Seq Weighted % Identity"
   } else {
      NULL
   }
@@ -109,12 +115,14 @@ shinyServer(function(input, output, session) {
     
     # pass a copy of the original data so that filtering doesn't change it
     curr_data <- init_data[,]
-    getFilteredData(curr_data, species = input$species, serogroup = input$serogroup, seq_type = input$seq_type,
+    output <- getFilteredData(curr_data, species = input$species, serogroup = input$serogroup, seq_type = input$seq_type,
                     coverage = input$coverage, identity = input$identity, 
                     genes = input$gene, updateProgress = updateProgress)
+    output
   })
   
   output$all_fields <- renderDataTable({
+    toggleDLButton('download_all', NULL)
     validate(validateInput(input))
     fields <- tables()$all_fields
     toggleDLButton('download_all', fields)
@@ -122,6 +130,7 @@ shinyServer(function(input, output, session) {
   })
 
   output$gene_fields <- renderDataTable({
+    toggleDLButton('download_genes', NULL)
     validate(validateInput(input))
     fields <- tables()$gene_fields
     toggleDLButton('download_genes', fields)

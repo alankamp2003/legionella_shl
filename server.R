@@ -7,6 +7,7 @@ library(DT)
 source("legionellaFuncs.R")
 
 init_data <- NULL
+meta <- NULL
 
 # enables the download button with the passed key if the passed 
 # data (a list) is not null, not empty and none of the vectors 
@@ -23,18 +24,18 @@ toggleDLButton <- function(key, data) {
 # validates the data in the input fields
 validateInput <- function(input) {
   if (is.null(input$file1)) {
-    "Please choose a legionella data file"
+    "Please choose a virulence data file"
   } else if (!is.numeric(input$coverage)) {
     "Please enter a valid number as Seq Total % Coverage"
   } else if (!is.numeric(input$identity)) {
     "Please enter a valid number as Seq Weighted % Identity"
   } else {
-     NULL
+    NULL
   }
 }
 
 # converts the passed vectors elements into ones to be shown in a select widget;
-# does so by gets unique elements from the passed vector, sorting them and addin
+# does so by getting unique elements from the passed vector, sorting them and adding
 # the "All" option to them
 getSelectOpts <- function(options) {
   options <- sort(unique(options))
@@ -69,7 +70,9 @@ shinyServer(function(input, output, session) {
         }
         progress$set(value = value, detail = detail)
       }
-      init_data <<- getInitialData(inFile$datapath, updateProgress)
+      return_list <- getInitialData(inFile$datapath, updateProgress)
+      init_data <<- return_list$fields
+      meta <<- return_list$meta
       
       # load the select(drop down) widgets from the data
       species <- getSelectOpts(init_data$Species)
@@ -82,14 +85,42 @@ shinyServer(function(input, output, session) {
       updateSelectInput(session, "seq_type",
                         choices = seq_types)
       genes <- getSelectOpts(init_data$GENE)
-      args <- read_excel('args.xlsx')
-      sel_genes <- args[[1, 'Genes']]
-      if (!is.na(sel_genes))
-        sel_genes <- strsplit(sel_genes, ',')[[1]]
-      else
-        sel_genes <- c()
-      updateSelectInput(session, "gene",
-                        choices = genes, selected = sel_genes)
+      # the commented out code reads the xlsx file; if the file contains a list of genes,
+      # sets them as the genes selected by default in the dropdown for genes; the code 
+      # can be uncommented later if need be
+      # args <- read_excel('args.xlsx')
+      # sel_genes <- args[[1, 'Genes']]
+      # if (!is.na(sel_genes))
+      #   sel_genes <- strsplit(sel_genes, ',')[[1]]
+      # else
+      #   sel_genes <- c()
+      # updateSelectInput(session, "gene",
+      #                   choices = genes, selected = sel_genes)
+      updateSelectInput(session, "gene", choices = genes)
+    }
+  })
+  
+  # the following observeEvents manage the checkboxes for species, serogroup and sequence type, in that order;
+  # the order also signifies parent child relationship, from left to right; if a child's checkbox is checked,
+  # its parent's checkbox is automatically checked; if a parent's checkbox is unchecked, its child's checkbox is
+  # is automatically unchecked
+  observeEvent(input$vir_spec, {
+    if (!input$vir_spec && input$vir_sero) {
+      updateCheckboxInput(session, "vir_sero", value = FALSE)
+    }
+  })
+  
+  observeEvent(input$vir_sero, {
+    if (input$vir_sero && !input$vir_spec) {
+      updateCheckboxInput(session, "vir_spec", value = TRUE)
+    } else if (!input$vir_sero && input$vir_seq_type) {
+      updateCheckboxInput(session, "vir_seq_type", value = FALSE)
+    }
+  })
+  
+  observeEvent(input$vir_seq_type, {
+    if (input$vir_seq_type && !input$vir_sero) {
+      updateCheckboxInput(session, "vir_sero", value = TRUE)
     }
   })
   
@@ -115,9 +146,11 @@ shinyServer(function(input, output, session) {
     
     # pass a copy of the original data so that filtering doesn't change it
     curr_data <- init_data[,]
-    output <- getFilteredData(curr_data, species = input$species, serogroup = input$serogroup, seq_type = input$seq_type,
-                    coverage = input$coverage, identity = input$identity, 
-                    genes = input$gene, updateProgress = updateProgress)
+    output <- getFilteredData(curr_data, meta, species = input$species, serogroup = input$serogroup, seq_type = input$seq_type,
+                              coverage = input$coverage, identity = input$identity, 
+                              genes = input$gene, show_spec = input$vir_spec, 
+                              show_sero = input$vir_sero, show_seq_type = input$vir_seq_type, 
+                              updateProgress = updateProgress)
     output
   })
   
@@ -128,12 +161,20 @@ shinyServer(function(input, output, session) {
     toggleDLButton('download_all', fields)
     datatable(fields, options = list(pageLength = 10), rownames= FALSE)
   })
-
+  
   output$gene_fields <- renderDataTable({
     toggleDLButton('download_genes', NULL)
     validate(validateInput(input))
     fields <- tables()$gene_fields
     toggleDLButton('download_genes', fields)
+    datatable(fields, options = list(pageLength = 10), rownames= FALSE)
+  })
+  
+  output$virulence_hits <- renderDataTable({
+    #toggleDLButton('vir_hits', NULL)
+    #validate(validateInput(input))
+    fields <- tables()$virulence_hits
+    #toggleDLButton('vir_hits', fields)
     datatable(fields, options = list(pageLength = 10), rownames= FALSE)
   })
   

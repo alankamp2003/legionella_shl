@@ -51,13 +51,159 @@ updateProg <- function(updateProgress = NULL, text) {
     updateProgress(detail = text)
 }
 
+# since the rows shown on Gene Fields tab have sequence (node) in them, there can be many repeated rows for the
+# same combination of gene, species, serogroup and sequence type; the tibble returned here makes sure that
+# there's only one row per unique combination of those fields; it's used for the Virulence Hits tab
+getVirulenceRows <- function(gene_rows) {
+  if (nrow(gene_rows) > 0) {
+    vir_rows <- tibble()
+    prev_id <- ""
+    prev_gene <- ""
+    prev_spec <- ""
+    prev_sero <- ""
+    prev_seqt <- ""
+    j <- 0
+    for (i in 1:nrow(gene_rows)) {
+      id <- gene_rows[[i,'ID']]
+      gene <- gene_rows[[i,'GENE']]
+      spec <- gene_rows[[i,'Species']]
+      sero <- gene_rows[[i,'Serogroup']]
+      seqt <- gene_rows[[i,'Sequence Type']]
+      if (prev_id != id || prev_gene != gene || prev_spec != spec || prev_sero != sero || prev_seqt != seqt) {
+        j <- j + 1
+        vir_rows[j,1] <- id
+        vir_rows[j,2] <- gene
+        vir_rows[j,3] <- spec
+        vir_rows[j,4] <- sero
+        vir_rows[j,5] <- seqt
+      }
+      prev_id <- id
+      prev_gene <- gene
+      prev_spec <- spec
+      prev_sero <- sero
+      prev_seqt <- seqt
+    }
+    colnames(vir_rows) <- c('ID','GENE', 'Species', 'Serogroup', 'Sequence Type')
+    return(vir_rows)
+  }
+  gene_rows
+}
+
+#Returns the virulence hits for the passed genes in the passed data frame
+getGeneHits <- function(gene_rows, meta_rows, genes) {
+  hits <- c()
+  tot_num <- nrow(meta_rows)
+  hits <- c(hits, toString(tot_num))
+  for (g in genes) {
+    gene_num <- nrow(filter(gene_rows, GENE == g))
+    perc <- (gene_num/tot_num)*100
+    hits <- c(hits, paste(gene_num, "(", format(perc, digits = 2), ")", sep = ""))
+  }
+  hits
+}
+
+# Returns a vector for showing virulence hits for a species, it'll be a row in the table shown on virulence hits tab;
+# adds empty values in the columns for serogroup and/or sequence type if they are shown
+getSpeciesHitsRow <- function(spec_name, spec_hits, show_sero, show_seq_type) {
+  hits_row  <- c(spec_name)
+  if (show_sero) {
+    hits_row <- c(hits_row, "")
+    if (show_seq_type) {
+      hits_row <- c(hits_row, "")
+    }
+  }
+  hits_row <- c(hits_row, spec_hits)
+}
+
+# Returns a vector for showing virulence hits for a serogroup, it'll be a row in the table shown on virulence hits tab;
+# adds empty values in the columns for species and sequence type
+getSerogroupHitsRow <- function(sero_name, sero_hits, show_seq_type) {
+  hits_row  <- c("", sero_name)
+  if (show_seq_type) {
+    hits_row <- c(hits_row, "")
+  }
+  hits_row <- c(hits_row, sero_hits)
+}
+
+# Returns a vector for showing virulence hits for a sequence type, it'll be a row in the table shown on virulence hits tab;
+# adds empty values in the columns for species and serogroup
+getSeqTypeHitsRow <- function(seq_name, seq_hits) {
+  hits_row <- c("", "", seq_name, seq_hits)
+}
+
+#Returns the data to be shown in the "Virulence Hits" tab 
+getVirulenceHits <- function(gene_rows, meta_rows, show_spec, show_sero, show_seq_type) {
+  vir_hits <- data.frame()
+  if (!show_spec)
+    return(vir_hits)
+  vir_rows <- getVirulenceRows(gene_rows)
+  # get the names of the species, serogroups, sequence types and genes from the data
+  species <- unlist(distinct(vir_rows, Species), use.names = FALSE)
+  genes <- unlist(distinct(vir_rows, GENE), use.names = FALSE)
+  # set the genes as the column names and the species, serogroups etc. as the row names;
+  # also set default values in the rows
+  options(stringsAsFactors = FALSE)
+  # set the number tested for each species, serogroup etc. (rows) for each gene (columns)
+  for (s in species) {
+    spec_gene_rows <- filter(vir_rows, Species == s)
+    spec_meta_rows <- filter(meta_rows, Species == s)
+    # gene hits per species
+    spec_hits <- getGeneHits(spec_gene_rows, spec_meta_rows, genes)
+    spec_hits <- getSpeciesHitsRow(s, spec_hits, show_sero, show_seq_type)
+    vir_hits <- rbind(vir_hits, spec_hits)
+    if (show_sero) {
+      # gene hits per serogroup
+      sero_groups <- unlist(distinct(spec_gene_rows, Serogroup), use.names = FALSE)
+      for (sg in sero_groups) {
+        sero_gene_rows <- filter(spec_gene_rows, Serogroup == sg)
+        sero_meta_rows <- filter(meta_rows, Serogroup == sg)
+        sero_hits <- getGeneHits(sero_gene_rows, sero_meta_rows, genes)
+        sero_hits <- getSerogroupHitsRow(sg, sero_hits, show_seq_type)
+        vir_hits <- rbind(vir_hits, sero_hits)
+        if (show_seq_type) {
+          # gene hits per sequence type
+          seq_types <- unlist(distinct(sero_gene_rows, `Sequence Type`), use.names = FALSE)
+          for (st in seq_types) {
+            st_gene_rows <- filter(sero_gene_rows, `Sequence Type` == st)
+            st_meta_rows <- filter(meta_rows, `Sequence Type` == st)
+            seq_hits <- getGeneHits(st_gene_rows, st_meta_rows, genes)
+            seq_hits <- getSeqTypeHitsRow(st, seq_hits)
+            vir_hits <- rbind(vir_hits, seq_hits)
+          }
+        }
+      }
+    }
+  }
+  col_names <- c("Species")
+  if (show_sero) {
+    col_names <- c(col_names,"Serogroup")
+    if (show_seq_type) {
+      col_names <- c(col_names, "Sequence Type")
+    }
+  }
+  col_names <- c(col_names, "# Tested", genes)
+  if (nrow(vir_hits) > 0) {
+    colnames(vir_hits) <- col_names
+  }
+  vir_hits
+}
+
+# Returns the data to be shown in the "Statistical analysis" tab; the data is pairwise chi-square tests between
+# species, serogroups, sequence types, depending upon what's present in the passed virulence hits data frame
+getStatAnalysis <- function(vir_hits) {
+  stat_analysis <- list()
+  #get the rows just for species data
+  spec_rows <- filter(vir_hits, Species != "") %>% select(-Serogroup, -'Sequence Type')
+  spec_names <- spec_rows[1]
+}
+
 # link various sheets in the excel file to get the final list of fields
 # (including SEQUENCE, which will be removed later); some fields are renamed 
 # to make the linking work
 getInitialData <- function(excel_file, updateProgress = NULL) {
   updateProg(updateProgress, "Extracting fields from pipeline run")
   vfdb <- read_excel(excel_file,sheet='VFDB') %>%
-                                 select(FILE, GENE, SEQUENCE, `%COVERAGE`, `%IDENTITY`)
+    select(FILE, GENE, SEQUENCE, `%COVERAGE`, `%IDENTITY`)
   updateProg(updateProgress, "Renaming fields and linking sheets")
   linking <- read_excel(excel_file,sheet='Linking') %>% rename(FILE = File)
   
@@ -70,12 +216,12 @@ getInitialData <- function(excel_file, updateProgress = NULL) {
   updateProg(updateProgress, "Extracting final fields")
   fields_with_seq <- select(join_by_id, ID, GENE, SEQUENCE, Species, Serogroup, `Sequence Type`, `Collected Date`, `%COVERAGE`,
                             `%IDENTITY`, Facility, Room) %>%
-                                  arrange(ID, GENE, SEQUENCE)
-  return(fields_with_seq)
+    arrange(ID, GENE, SEQUENCE)
+  list(fields = fields_with_seq, meta = meta)
 }
 
-getFilteredData <- function(fields_with_seq, species = NULL, serogroup = NULL, seq_type = NULL, genes = NULL, 
-                            coverage = 0.0, identity = 0.0, updateProgress = NULL) {
+getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = NULL, seq_type = NULL, genes = NULL, 
+                            coverage = 0.0, identity = 0.0, show_spec, show_sero, show_seq_type, updateProgress = NULL) {
   # filter by species, serogroup, sequence type, genes 
   # if one or more of them have been specified
   updateProg(updateProgress, "Filtering by species")
@@ -109,7 +255,7 @@ getFilteredData <- function(fields_with_seq, species = NULL, serogroup = NULL, s
     prev_gene_first_index <- -1
     gene_first_index <- 1
     last_index = nrow(fields_with_seq)
-  
+    
     # each row in the output shows specimen id, gene name, sequence (node) name,
     # the maximum raw %COVERAGE and %IDENTITY for a node, the maximum calculated 
     # %COVERAGE and %IDENTITY for a node (sequence), as explained in calcCovIden(),
@@ -122,6 +268,9 @@ getFilteredData <- function(fields_with_seq, species = NULL, serogroup = NULL, s
       seq <- fields_with_seq[[i,'SEQUENCE']]
       cov <- fields_with_seq[[i,'%COVERAGE']]
       iden <- fields_with_seq[[i,'%IDENTITY']]
+      spec <- fields_with_seq[[i,'Species']]
+      sero <- fields_with_seq[[i,'Serogroup']]
+      seqt <- fields_with_seq[[i,'Sequence Type']]
       if (prev_id == id) {
         if (prev_gene == gene) {
           if (prev_seq == seq) {
@@ -178,20 +327,23 @@ getFilteredData <- function(fields_with_seq, species = NULL, serogroup = NULL, s
       # update/add a row with the data obtained above 
       aggr_by_gene[j,1] <- id
       aggr_by_gene[j,2] <- gene
-      aggr_by_gene[j,3] <- seq
-      aggr_by_gene[j,4] <- max_cov
-      aggr_by_gene[j,5] <- max_iden
+      aggr_by_gene[j,3] <- spec
+      aggr_by_gene[j,4] <- sero
+      aggr_by_gene[j,5] <- seqt
+      aggr_by_gene[j,6] <- seq
+      aggr_by_gene[j,7] <- max_cov
+      aggr_by_gene[j,8] <- max_iden
       if (new_row || i == last_index) {
         if (j > 1) {
           k <- ifelse(i == last_index, j, j - 1)
-          aggr_by_gene[k,6] <- max_tot_cov
-          aggr_by_gene[k,7] <- max_wgt_iden
+          aggr_by_gene[k,9] <- max_tot_cov
+          aggr_by_gene[k,10] <- max_wgt_iden
           # if it's a new gene, update the previous gene's maximum %coverage and %identity
           # in all the rows that are showing it; also set this row's index as the first
           # index for the current gene
           if (new_gene || i == last_index) {
-            aggr_by_gene[gene_first_index : k,8] <- gene_max_tot_cov
-            aggr_by_gene[gene_first_index : k,9] <- gene_max_wgt_iden
+            aggr_by_gene[gene_first_index : k,11] <- gene_max_tot_cov
+            aggr_by_gene[gene_first_index : k,12] <- gene_max_wgt_iden
             gene_first_index <- j
             gene_max_tot_cov <- -1.0
             gene_max_wgt_iden <- -1.0
@@ -205,8 +357,8 @@ getFilteredData <- function(fields_with_seq, species = NULL, serogroup = NULL, s
       prev_gene <- gene
       prev_seq <- seq
     }
-    colnames(aggr_by_gene) <- c('ID', 'GENE', 'SEQUENCE', 
-                                'SEQ MAX %COVERAGE', 'SEQ MAX %IDENTITY', 
+    colnames(aggr_by_gene) <- c('ID', 'GENE', 'Species', 'Serogroup', 'Sequence Type',
+                                'SEQUENCE', 'SEQ MAX %COVERAGE', 'SEQ MAX %IDENTITY', 
                                 'SEQ TOTAL %COVERAGE',  'SEQ WEIGHTED %IDENTITY',
                                 'GENE MAX TOTAL %COVERAGE', 'GENE MAX WEIGHTED %IDENTITY')
   }
@@ -217,5 +369,6 @@ getFilteredData <- function(fields_with_seq, species = NULL, serogroup = NULL, s
   aggr_by_gene <- filterByGT(aggr_by_gene, "SEQ WEIGHTED %IDENTITY", identity)
   
   fields_with_seq <- select(fields_with_seq, -SEQUENCE)
-  list(all_fields = fields_with_seq, gene_fields = aggr_by_gene)
+  vir_hits = getVirulenceHits(aggr_by_gene, meta, show_spec, show_sero, show_seq_type)
+  list(all_fields = fields_with_seq, gene_fields = aggr_by_gene, virulence_hits = vir_hits)
 }

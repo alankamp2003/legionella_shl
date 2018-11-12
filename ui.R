@@ -6,12 +6,12 @@ library(DT)
 shinyUI(fluidPage(
   useShinyjs(),
   # Application title
-  titlePanel("Legionella Data Analysis"),
+  titlePanel("Virulence Data Analysis"),
   
   # Sidebar with several inputs for uploading and filtering data
   sidebarLayout(
     sidebarPanel(
-      fileInput("file1", "Choose legionella data file",
+      fileInput("file1", "Choose virulence data file",
                 accept = c(
                   "application/vnd.ms-excel",
                   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -28,15 +28,19 @@ shinyUI(fluidPage(
       selectInput("gene", "Genes", multiple = TRUE,
                   c("All" = "")),
       fluidRow(column(6, numericInput("coverage", "Seq Total % Coverage",
-                  min = 0.0, max = 100,
-                  value = 0.0, step = 0.5)),
+                                      min = 0.0, max = 100,
+                                      value = 0.0, step = 0.5)),
                column(6, numericInput("identity", "Seq Weighted % Identity",
-                  min = 0.0, max = 100,
-                  value = 0.0, step = 0.5))),
+                                      min = 0.0, max = 100,
+                                      value = 0.0, step = 0.5))),
+      tags$h4("Virulence hits breakdown by"),
+      fluidRow(column(4, checkboxInput("vir_spec", label = "Species", value = TRUE)),
+               column(4, checkboxInput("vir_sero", label = "Serogroup", value = FALSE)),
+               column(4, checkboxInput("vir_seq_type", label = "Seq. Type", value = FALSE))),
       actionButton(inputId = "gen_tables",
                    label = "Generate tables")
     ),
-
+    
     # Show a tables for all fields and gene fields
     mainPanel(
       tabsetPanel(
@@ -50,7 +54,22 @@ shinyUI(fluidPage(
                  tags$p(),
                  downloadButton('download_genes'),
                  tags$p(),
-                 DT::dataTableOutput('gene_fields'))
+                 DT::dataTableOutput('gene_fields')),
+        tabPanel("Virulence Hits",
+                 tags$p(),
+                 downloadButton('vir_hits'),
+                 tags$p(),
+                 DT::dataTableOutput('virulence_hits')),
+        tabPanel("Statistical Analysis",
+                 tags$p(),
+                 downloadButton('stat_ana'),
+                 tags$p(),
+                 DT::dataTableOutput('species_analysis')),
+        tabPanel("Visualization",
+                 tags$p(),
+                 downloadButton('vis_button'),
+                 tags$p(),
+                 plotOutput('vis_plot'))
       )
     )
   )

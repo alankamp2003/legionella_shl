@@ -48,6 +48,9 @@ shinyServer(function(input, output, session) {
     if (is.null(inFile)) {
       toggleDLButton('download_all', NULL)
       toggleDLButton('download_genes', NULL)
+      toggleDLButton('download_vir_hits', NULL)
+      toggleDLButton('download_stats_ana', NULL)
+      toggleDLButton('download_vis', NULL)
       return(NULL)
     }
     # initialize the data structure containing all data only once
@@ -171,10 +174,18 @@ shinyServer(function(input, output, session) {
   })
   
   output$virulence_hits <- renderDataTable({
-    #toggleDLButton('vir_hits', NULL)
-    #validate(validateInput(input))
+    toggleDLButton('download_vir_hits', NULL)
+    validate(validateInput(input))
     fields <- tables()$virulence_hits
-    #toggleDLButton('vir_hits', fields)
+    toggleDLButton('download_vir_hits', fields)
+    datatable(fields, options = list(pageLength = 10), rownames= FALSE)
+  })
+  
+  output$stats_analysis <- renderDataTable({
+    toggleDLButton('download_stats_ana', NULL)
+    validate(validateInput(input))
+    fields <- tables()$stats_analysis
+    toggleDLButton('download_stats_ana', fields)
     datatable(fields, options = list(pageLength = 10), rownames= FALSE)
   })
   
@@ -186,16 +197,41 @@ shinyServer(function(input, output, session) {
     content = function(file) {
       df <- data.frame(tables()$all_fields)
       write.xlsx(df, file, row.names = FALSE)
-    }
+    },
+    contentType = "application/vnd.ms-excel"
   )
   
-  # # Downloadable xslx of gene fields
+  # Downloadable xslx of gene fields
   output$download_genes <- downloadHandler(
     filename = function() {
       paste("gene_fields", ".xlsx", sep = "")
     },
     content = function(file) {
       df <- data.frame(tables()$gene_fields)
+      write.xlsx(df, file, row.names = FALSE)
+    },
+    contentType = "application/vnd.ms-excel"
+  )
+  
+  # Downloadable xslx of virulence hits
+  output$download_vir_hits <- downloadHandler(
+    filename = function() {
+      paste("virulence_hits", ".xlsx", sep = "")
+    },
+    content = function(file) {
+      df <- data.frame(tables()$virulence_hits)
+      write.xlsx(df, file, row.names = FALSE)
+    },
+    contentType = "application/vnd.ms-excel"
+  )
+  
+  # Downloadable xslx of statistical analysis (chi-square values)
+  output$download_stats_ana <- downloadHandler(
+    filename = function() {
+      paste("stats_analysis", ".xlsx", sep = "")
+    },
+    content = function(file) {
+      df <- data.frame(tables()$stats_analysis)
       write.xlsx(df, file, row.names = FALSE)
     },
     contentType = "application/vnd.ms-excel"

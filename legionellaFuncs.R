@@ -8,8 +8,6 @@ library(lazyeval)
 # the value to numeric type before filtering
 filterByIn <- function(df, col_name, value, is_numeric = FALSE) {
   if (!is.null(value)) {
-    #value <- as.character(value)
-    #value <- strsplit(value, ',')[[1]]
     if (is_numeric)
       value <- as.numeric(value)
     in_criteria <- interp(~y %in% x, .values=list(y = as.name(col_name), x = value))
@@ -19,7 +17,7 @@ filterByIn <- function(df, col_name, value, is_numeric = FALSE) {
 }
 
 # filter the passed data frame(df) by the passed column name and passed value,
-# which is expected to be a number and may be NA
+# which is expected to be a number and may be null
 filterByGT <- function(df, col_name, value) {
   if (!is.null(value)) {
     gt_criteria <- interp(~y > x, .values=list(y = as.name(col_name), x = value))
@@ -43,6 +41,19 @@ calcCovIden <- function(covs, idens) {
     iden <- sum(covs*idens)
   }
   c(cov, iden)
+}
+
+# Sets the passed coverage and identity in the row at index "row" in the passed data frame;
+# The coverage and identity are set at "col" and "col + 1" respectively 
+setCovAndIden <- function(cov, iden, row, col, aggr_by_gene) {
+  aggr_by_gene[row, col] <- cov
+  aggr_by_gene[row, col+1] <- iden
+}
+
+setCovAndIdenMultiRow <- function(cov, iden, row_start, row_end, col, aggr_by_gene) {
+  print(paste("row_start:", row_start, "row_end:", row_end, "col:", col))
+  aggr_by_gene[row_start : row_end, col] <- cov
+  aggr_by_gene[row_start : row_end, col+1] <- iden
 }
 
 updateProg <- function(updateProgress = NULL, text) {
@@ -188,13 +199,153 @@ getVirulenceHits <- function(gene_rows, meta_rows, show_spec, show_sero, show_se
   vir_hits
 }
 
-# Returns the data to be shown in the "Statistical analysis" tab; the data is pairwise chi-square tests between
-# species, serogroups, sequence types, depending upon what's present in the passed virulence hits data frame
-getStatAnalysis <- function(vir_hits) {
-  stat_analysis <- list()
-  #get the rows just for species data
-  spec_rows <- filter(vir_hits, Species != "") %>% select(-Serogroup, -'Sequence Type')
-  spec_names <- spec_rows[1]
+# The passed virulence hit is supposed to be in the format "AB(X)", where A and B are integers
+# whereas X can be a double; gets rid of the parenthses and X; returns AB converted to an integer
+getInteger <- function(vir_hit) {
+  int_val <- gsub("\\(.+)", "", vir_hit)
+  int_val <- as.integer(int_val)
+  int_val
+}
+
+# Returns a vector containing the number of hits and no hits for the gene at the passed column
+# in the row at the passed index of the passed data frame
+getHitsVector <- function(vir_hits, row, col) {
+  hit <- vir_hits[row,col]
+  no_hit <- vir_hits[row,1] - hit
+  c(hit, no_hit)
+}
+
+# The passed data frame contains two rows of virulence hits; the rows are for hits between
+# two entities at the same level i.e. species, serogroup or sequence type; the first column
+# is for an entity's total hits across all genes; the subsequent columns are for specific 
+# genes' hits; computes chi-square p-values for all genes and returns the values as a vector 
+getChiSquareVector <- function(vir_hits) {
+  p_vals <- character(ncol(vir_hits)-1)
+  j = 1
+  for (i in 2:ncol(vir_hits)) {
+    r1 <- getHitsVector(vir_hits, 1, i)
+    print(r1)
+    r2 <- getHitsVector(vir_hits, 2, i)
+    print(r2)
+    matrixa <- matrix(c(r1,r2), 2, byrow=TRUE)
+    chi_test <- chisq.test(matrixa, correct=FALSE)
+    p_val <- chi_test$p.value
+    p_val <- ifelse(is.nan(p_val), "NA (No Diff)", format(p_val, digits = 4, nsmall = 4))
+    p_vals[j] <- p_val
+    j <- j + 1
+  }
+  p_vals
+}
+
+# The passed data frame (vir_hits) contains virulence hits in all "numeric" columns at a particular level
+# e.g. species; "chi_sqr_vals" contains the chi-square p-values computed so far at other levels; calculates
+# p-values at this level, adds them to chi_sqr_vals and returns that; the first column in the returned data frame
+# shows the names of the entities (e.g. species) being compared; adds "prefix" (e.g. "SG"), before
+# those names, if specified
+getChiSquareVals <- function(vir_hits, chi_sqr_vals, prefix="") {
+  #print(spec_hits)
+  if (is.null(chi_sqr_vals))
+    chi_sqr_vals <- tibble()
+  i = 1
+  num_rows <- nrow(vir_hits)
+  # calculate p-values for each pair of species, serogroups etc. i.e. each pair of rows
+  # num_vals only contains the columns with "numeric" data i.e. # tested and gene hits e.g. 20(80)
+  num_vals <- vir_hits[, 2:ncol(vir_hits)]
+  while (i < num_rows) {
+    j <- i+1
+    while (j <= num_rows) {
+      int_vals <- tibble()
+      comp <- c(paste(prefix, vir_hits[i,1], sep = ""), paste(prefix, vir_hits[j,1], sep = ""))
+      int_vals <- rbind(int_vals, sapply(num_vals[i,], getInteger))
+      int_vals <- rbind(int_vals, sapply(num_vals[j,], getInteger))
+      p_vals <- getChiSquareVector(int_vals)
+      p_vals <- c(paste(comp, collapse = " vs. "), p_vals)
+      chi_sqr_vals <- rbind(chi_sqr_vals, p_vals)
+      j <- j+1
+    }
+    i <- i+1
+  }
+  chi_sqr_vals
+  #print(int_hits)
+}
+
+# Returns the column names used for the table showing chi-square p-values; the first column is for showing 
+# which entities e.g. species are being compared; the rest of the columns show gene names
+getChiSquareColNames <- function(col_names, spec_hits) {
+  if (is.null(col_names)) {
+    col_names <- c("Comparison", colnames(spec_hits)[3:ncol(spec_hits)])
+    #print(cols)
+  }
+  col_names
+}
+
+# Returns the column names and chi-square p-values to be shown at the species level
+getSpecChiSquareVals <- function(vir_hits, col_names, chi_sqr_vals) {
+  spec_hits <- filter(vir_hits, Species != "")
+  if (nrow(spec_hits) > 1) {
+    num_col_start <- 2
+    # find out where the "numeric" (e.g "20(80)") columns start; only keep columns that either
+    # have the names of the species or are "numeric"
+    if ("Serogroup" %in% colnames(spec_hits))
+      num_col_start <- num_col_start + 1
+    if ("Sequence Type" %in% colnames(spec_hits))
+      num_col_start <- num_col_start + 1
+    spec_hits <- spec_hits[, c(1, num_col_start:ncol(spec_hits))]
+    col_names <- getChiSquareColNames(col_names, spec_hits)
+    chi_sqr_vals <- getChiSquareVals(spec_hits, chi_sqr_vals)
+  }
+  list(col_names = col_names, chi_sqr_vals = chi_sqr_vals)
+}
+
+# Returns the column names and chi-square p-values to be shown at the serogroup level
+getSeroChiSquareVals <- function(vir_hits, col_names, chi_sqr_vals) {
+  if ("Serogroup" %in% colnames(vir_hits)) {
+    sero_hits <- filter(vir_hits, Serogroup != "")
+    if (nrow(sero_hits) > 1) {
+      num_col_start <- 3
+      # find out where the "numeric" (e.g "20(80)") columns start; only keep columns that either
+      # have the names of the serogroup or are "numeric"
+      if ("Sequence Type" %in% colnames(sero_hits))
+        num_col_start <- num_col_start + 1
+      sero_hits <- sero_hits[, c(2, num_col_start:ncol(sero_hits))]
+      col_names <- getChiSquareColNames(col_names, sero_hits)
+      chi_sqr_vals <- getChiSquareVals(sero_hits, chi_sqr_vals, prefix = "SG")
+    }
+  }
+  list(col_names = col_names, chi_sqr_vals = chi_sqr_vals)
+}
+
+# Returns the column names and chi-square p-values to be shown at the sequence type level
+getSeqTypeChiSquareVals <- function(vir_hits, col_names, chi_sqr_vals) {
+  if ("Sequence Type" %in% colnames(vir_hits)) {
+    seq_type_hits <- filter(vir_hits, `Sequence Type` != "") 
+    if (nrow(seq_type_hits) > 1) {
+      num_col_start <- 4
+      # only keep columns that either have the names of the sequence or are "numeric"
+      seq_type_hits <- seq_type_hits[, c(3, num_col_start:ncol(seq_type_hits))]
+      col_names <- getChiSquareColNames(col_names, seq_type_hits)
+      chi_sqr_vals <- getChiSquareVals(seq_type_hits, chi_sqr_vals, prefix = "ST")
+    }
+  }
+  list(col_names = col_names, chi_sqr_vals = chi_sqr_vals)
+}
+
+# Goes through the passed data frame containing virulence hits at multiple levels e.g. species, serogroup, sequence type and returns a data frame
+# containing chi-square p values at all of those levels
+getAllChiSquareVals <- function(vir_hits) {
+  col_names <- NULL
+  chi_sqr_vals <- NULL
+
+  spec_vals <- getSpecChiSquareVals(vir_hits, col_names, chi_sqr_vals)
+  sero_vals <- getSeroChiSquareVals(vir_hits, spec_vals$col_names, spec_vals$chi_sqr_vals)
+  seq_type_vals <- getSeqTypeChiSquareVals(vir_hits, sero_vals$col_names, sero_vals$chi_sqr_vals)
+  col_names <- seq_type_vals$col_names
+  chi_sqr_vals <- seq_type_vals$chi_sqr_vals
+  #print(chi_sqr_vals)
+  if (!is.null(chi_sqr_vals)) {
+    colnames(chi_sqr_vals) <- col_names
+  }
+  chi_sqr_vals
 }
 
 # link various sheets in the excel file to get the final list of fields
@@ -335,15 +486,27 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
       aggr_by_gene[j,8] <- max_iden
       if (new_row || i == last_index) {
         if (j > 1) {
-          k <- ifelse(i == last_index, j, j - 1)
+          #k <- ifelse(i == last_index, j, j - 1)
+          k <- j - 1
           aggr_by_gene[k,9] <- max_tot_cov
           aggr_by_gene[k,10] <- max_wgt_iden
+          if (i == last_index) {
+            k <- j
+            aggr_by_gene[k,9] <- max_tot_cov
+            aggr_by_gene[k,10] <- max_wgt_iden
+          }
           # if it's a new gene, update the previous gene's maximum %coverage and %identity
           # in all the rows that are showing it; also set this row's index as the first
           # index for the current gene
           if (new_gene || i == last_index) {
+            k <- j - 1
             aggr_by_gene[gene_first_index : k,11] <- gene_max_tot_cov
             aggr_by_gene[gene_first_index : k,12] <- gene_max_wgt_iden
+            if (i == last_index) {
+              k <- j
+              aggr_by_gene[gene_first_index : k,11] <- gene_max_tot_cov
+              aggr_by_gene[gene_first_index : k,12] <- gene_max_wgt_iden
+            }
             gene_first_index <- j
             gene_max_tot_cov <- -1.0
             gene_max_wgt_iden <- -1.0
@@ -369,6 +532,7 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
   aggr_by_gene <- filterByGT(aggr_by_gene, "SEQ WEIGHTED %IDENTITY", identity)
   
   fields_with_seq <- select(fields_with_seq, -SEQUENCE)
-  vir_hits = getVirulenceHits(aggr_by_gene, meta, show_spec, show_sero, show_seq_type)
-  list(all_fields = fields_with_seq, gene_fields = aggr_by_gene, virulence_hits = vir_hits)
+  vir_hits <- getVirulenceHits(aggr_by_gene, meta, show_spec, show_sero, show_seq_type)
+  chi_sqr_vals <- getAllChiSquareVals(vir_hits)
+  list(all_fields = fields_with_seq, gene_fields = aggr_by_gene, virulence_hits = vir_hits, stats_analysis = chi_sqr_vals)
 }

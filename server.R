@@ -42,6 +42,36 @@ getSelectOpts <- function(options) {
   options <- c("All" = "", options)
 }
 
+# Stores the plots contained in the passed list as plotOutput objects so that they can be displayed
+# later in "Visualization" tab; "prefix" is used so that plots can be found at the time of display
+storePlots <- function(plot_list, prefix) {
+  plot_output_list <- lapply(1:length(plot_list), function(i) {
+    plotname <- paste(prefix, i, sep="")
+    plotOutput(plotname, height = 280, width = 300, inline = TRUE)
+  })
+  do.call(tagList, plot_output_list)
+}
+
+# Displays the plots contained in the passed list in "Visualization" tab; "prefix" is used to 
+# find specific plots that are stored in the passed output already 
+displayPlots <- function(plot_list, prefix, output) {
+  #print(paste("plots", length(plot_list)))
+  if (length(plot_list) > 0) {
+    for (i in 1:length(plot_list)) {
+      # Need local so that each item gets its own number. Without it, the value
+      # of i in the renderPlot() will be the same across all instances, because
+      # of when the expression is evaluated.
+      local({
+        my_i <- i
+        plotname <- paste(prefix, my_i, sep="")
+        output[[plotname]] <- renderPlot(expr = {
+          plot_list[[my_i]]
+        }, height = 200, width = 300)
+      })
+    }
+  }
+}
+
 shinyServer(function(input, output, session) {
   observe({
     inFile <- input$file1
@@ -50,7 +80,7 @@ shinyServer(function(input, output, session) {
       toggleDLButton('download_genes', NULL)
       toggleDLButton('download_vir_hits', NULL)
       toggleDLButton('download_stats_ana', NULL)
-      toggleDLButton('download_vis', NULL)
+      #toggleDLButton('download_vis', NULL)
       return(NULL)
     }
     # initialize the data structure containing all data only once
@@ -127,7 +157,7 @@ shinyServer(function(input, output, session) {
     }
   })
   
-  tables <- eventReactive(input$gen_tables, {
+  tables <- eventReactive(input$gen_output, {
     # Create a Progress object
     progress <- shiny::Progress$new()
     progress$set(message = "Generating output...", value = 0)
@@ -189,6 +219,22 @@ shinyServer(function(input, output, session) {
     datatable(fields, options = list(pageLength = 10), rownames= FALSE)
   })
   
+  # output$plot1 <- renderPlot({
+  #   tables()$plots$plot1
+  # })
+  
+  output$spec_plots <- renderUI({
+    storePlots(tables()$plots$spec_plots, "spec_plot")
+  })
+  
+  output$sero_plots <- renderUI({
+    storePlots(tables()$plots$sero_plots, "sero_plot")
+  })
+  
+  output$seq_type_plots <- renderUI({
+    storePlots(tables()$plots$seq_type_plots, "seq_type_plot")
+  })
+  
   # Downloadable xslx of all fields
   output$download_all <- downloadHandler(
     filename = function() {
@@ -236,4 +282,12 @@ shinyServer(function(input, output, session) {
     },
     contentType = "application/vnd.ms-excel"
   )
+  
+  # Call renderPlot for each one. Plots are only actually generated when they
+  # are visible on the web page.
+  observe({
+    displayPlots(tables()$plots$spec_plots, "spec_plot", output)
+    displayPlots(tables()$plots$sero_plots, "sero_plot", output)
+    displayPlots(tables()$plots$seq_type_plots, "seq_type_plot", output)
+  })
 })

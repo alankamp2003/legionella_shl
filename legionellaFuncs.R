@@ -200,12 +200,49 @@ getVirulenceHits <- function(gene_rows, meta_rows, show_spec, show_sero, show_se
 }
 
 # The passed virulence hit is supposed to be in the format "AB(X)", where A and B are integers
-# whereas X can be a double; gets rid of the parenthses and X; returns AB converted to an integer
-getInteger <- function(vir_hit) {
-  int_val <- gsub("\\(.+)", "", vir_hit)
+# whereas X can be a double; based on the passed pattern, gets rid of a particular part from the hit and
+# returns the rest converted to an integer
+getInteger <- function(pattern, vir_hit) {
+  int_val <- gsub(pattern = pattern, "", vir_hit)
   int_val <- as.integer(int_val)
   int_val
 }
+
+# The passed virulence hit is supposed to be in the format "AB(X)", where A and B are integers
+# whereas X can be a double; gets rid of the parenthses and X; returns AB converted to an integer
+getCount <- function(vir_hit) {
+  getInteger("\\(.+)", vir_hit)
+}
+
+# The passed virulence hit is supposed to be in the format "AB(X)", where A and B are integers
+# whereas X can be a double; gets rid of the parenthses and X; returns AB converted to an integer
+getPercentage <- function(vir_hit) {
+  getInteger("^.+\\(|\\)", vir_hit)
+}
+
+# Truncates the passed number value to the specified number of decimal digits and returns it 
+# as a double; doesn't truncate if the value contains the exponential symbol "e"
+getTruncValue <- function(number_val, digits) {
+  #print(paste("start", number_val))
+  if (!is.null(number_val) && !is.nan(number_val)) {
+     val <- format(number_val, digits = digits)
+     #print(val)
+     # find out if number_val contains "e"; if it does, return number_val as is;
+     # otherwise truncate the digits after the decimal point to the passed value
+     val_vec <- unlist(grep("e", val, ignore.case = TRUE))
+     #print(paste("val_vec1", val_vec))
+     if (length(val_vec) == 0) {
+       val_vec <- unlist(strsplit(val, "\\."))
+       #print(paste("val_vec2", val_vec))
+       if (length(val_vec) > 0) {
+          val <- paste(val_vec[1], ".", substr(val_vec[2], 1, digits), sep = "")
+       }
+     }
+     number_val <- as.double(val)
+  }
+  #print(paste("end", number_val))
+  number_val
+} 
 
 # Returns a vector containing the number of hits and no hits for the gene at the passed column
 # in the row at the passed index of the passed data frame
@@ -224,13 +261,14 @@ getChiSquareVector <- function(vir_hits) {
   j = 1
   for (i in 2:ncol(vir_hits)) {
     r1 <- getHitsVector(vir_hits, 1, i)
-    print(r1)
+    #print(r1)
     r2 <- getHitsVector(vir_hits, 2, i)
-    print(r2)
+    #print(r2)
     matrixa <- matrix(c(r1,r2), 2, byrow=TRUE)
     chi_test <- chisq.test(matrixa, correct=FALSE)
-    p_val <- chi_test$p.value
-    p_val <- ifelse(is.nan(p_val), "NA (No Diff)", format(p_val, digits = 4, nsmall = 4))
+    p_val <- getTruncValue(chi_test$p.value, 4)
+    #p_val <- ifelse(is.nan(p_val), "NA (No Diff)", format(p_val, digits = 4))
+    p_val <- ifelse(is.nan(p_val), "NA (No Diff)", as.character(p_val))
     p_vals[j] <- p_val
     j <- j + 1
   }
@@ -256,8 +294,8 @@ getChiSquareVals <- function(vir_hits, chi_sqr_vals, prefix="") {
     while (j <= num_rows) {
       int_vals <- tibble()
       comp <- c(paste(prefix, vir_hits[i,1], sep = ""), paste(prefix, vir_hits[j,1], sep = ""))
-      int_vals <- rbind(int_vals, sapply(num_vals[i,], getInteger))
-      int_vals <- rbind(int_vals, sapply(num_vals[j,], getInteger))
+      int_vals <- rbind(int_vals, sapply(num_vals[i,], getCount))
+      int_vals <- rbind(int_vals, sapply(num_vals[j,], getCount))
       p_vals <- getChiSquareVector(int_vals)
       p_vals <- c(paste(comp, collapse = " vs. "), p_vals)
       chi_sqr_vals <- rbind(chi_sqr_vals, p_vals)
@@ -346,6 +384,109 @@ getAllChiSquareVals <- function(vir_hits) {
     colnames(chi_sqr_vals) <- col_names
   }
   chi_sqr_vals
+}
+
+# Creates and returns a list of plots from the passed data frame; the first column is the name of the level e.g. "Species" and shows the 
+# entities at that level; the second column onwards show the percentage of virulence hits for each gene for a given entity;
+# the plots show bars depicting the percentage for each gene for a given entity
+getPlotList <- function(plot_hits) {
+  cols <- colnames(plot_hits)
+  plot_list <- list()
+  for (i in 2:ncol(plot_hits)) {
+    local({
+      i <- i
+      #print(paste("i:", i, cols[i]))
+      #print(paste("plot_hits[,i]", plot_hits[,i]))
+      ylabel <- ifelse(i == 2, "Percentage", "")
+      gplot <- ggplot(plot_hits, aes(x = plot_hits[,1], y = plot_hits[,i], fill = plot_hits[,1], ymax=100, ymin=0)) +
+                          geom_bar(stat="identity", position = "dodge", width = 0.2, show.legend = FALSE) +
+                          #xlab(cols[1]) + ylab("Percentage") +  ggtitle(cols[i]) +
+                          xlab("") +ylab(ylabel) +  ggtitle(cols[i]) +
+                          # + theme_bw() +                                                                                              
+                          theme(
+                            plot.title = element_text(color="red", size=18, face="bold.italic", hjust = 0.5),
+                            axis.title.x = element_text(color="#993333", size=14, face="bold"),
+                            axis.title.y = element_text(color="#993333", size=14, face="bold")
+                          )
+      plot_list[[i-1]] <<- gplot
+    })
+  }
+  #print(length(plot_list))
+  plot_list
+}
+
+# Returns the species level plots to be shown in the "Visualization" tab
+getSpecPlotList <- function(vir_hits) {
+  spec_plots <- list()
+  cols <- colnames(vir_hits)
+  if ("Species" %in% cols) {
+    spec_hits <- filter(vir_hits, Species != "")
+    if (nrow(spec_hits) > 0) {
+      gene_col_start <- 3
+      # find out where the columns showing virulence hits for genes (e.g "20(80)") start;
+      # only keep columns that either have the names of the species or virulence hits
+      if ("Serogroup" %in% cols)
+        gene_col_start <- gene_col_start + 1
+      if ("Sequence Type" %in% cols)
+        gene_col_start <- gene_col_start + 1
+      spec_hits <- spec_hits[, c(1, gene_col_start:ncol(spec_hits))]
+      num_cols <- ncol(spec_hits)
+      spec_hits[2:num_cols] <- lapply(spec_hits[2:num_cols], getPercentage)
+      #print(spec_hits)
+      spec_plots <- getPlotList(spec_hits)
+    }
+  }
+  spec_plots
+}
+
+# Returns the serogroup level plots to be shown in "Visualization" tab
+getSeroPlotList <- function(vir_hits) {
+  sero_plots <- list()
+  cols <- colnames(vir_hits)
+  if ("Serogroup" %in% cols) {
+    sero_hits <- filter(vir_hits, Serogroup != "")
+    if (nrow(sero_hits) > 0) {
+      gene_col_start <- 4
+      # find out where the columns showing virulence hits for genes (e.g "20(80)") start;
+      # only keep columns that either have the names of the species or virulence hits
+      if ("Sequence Type" %in% cols)
+        gene_col_start <- gene_col_start + 1
+      sero_hits <- sero_hits[, c(2, gene_col_start:ncol(sero_hits))]
+      num_cols <- ncol(sero_hits)
+      sero_hits[2:num_cols] <- lapply(sero_hits[2:num_cols], getPercentage)
+      #print(sero_hits)
+      sero_plots <- getPlotList(sero_hits)
+    }
+  }
+  sero_plots
+}
+
+# Returns the sequence type level plots to be shown in "Visualization" tab
+getSeqTypePlotList <- function(vir_hits) {
+  seq_type_plots <- list()
+  cols <- colnames(vir_hits)
+  if ("Sequence Type" %in% cols) {
+    seq_type_hits <- filter(vir_hits, `Sequence Type` != "")
+    if (nrow(seq_type_hits) > 0) {
+      gene_col_start <- 5
+      # find out where the columns showing virulence hits for genes (e.g "20(80)") start;
+      # only keep columns that either have the names of the species or virulence hits
+      seq_type_hits <- seq_type_hits[, c(3, gene_col_start:ncol(seq_type_hits))]
+      num_cols <- ncol(seq_type_hits)
+      seq_type_hits[2:num_cols] <- lapply(seq_type_hits[2:num_cols], getPercentage)
+      #print(seq_type_hits)
+      seq_type_plots <- getPlotList(seq_type_hits)
+    }
+  }
+  seq_type_plots
+}
+
+# Returns the list containing plots to be shown in "Visualization" tab
+getPlots <- function(vir_hits) {
+  spec_plots <- getSpecPlotList(vir_hits)
+  sero_plots <- getSeroPlotList(vir_hits)
+  seq_type_plots <- getSeqTypePlotList(vir_hits)
+  list(spec_plots = spec_plots, sero_plots = sero_plots, seq_type_plots = seq_type_plots)
 }
 
 # link various sheets in the excel file to get the final list of fields
@@ -534,5 +675,6 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
   fields_with_seq <- select(fields_with_seq, -SEQUENCE)
   vir_hits <- getVirulenceHits(aggr_by_gene, meta, show_spec, show_sero, show_seq_type)
   chi_sqr_vals <- getAllChiSquareVals(vir_hits)
-  list(all_fields = fields_with_seq, gene_fields = aggr_by_gene, virulence_hits = vir_hits, stats_analysis = chi_sqr_vals)
+  plots <- getPlots(vir_hits)
+  list(all_fields = fields_with_seq, gene_fields = aggr_by_gene, virulence_hits = vir_hits, stats_analysis = chi_sqr_vals, plots = plots)
 }

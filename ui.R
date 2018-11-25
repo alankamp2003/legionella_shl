@@ -37,8 +37,8 @@ shinyUI(fluidPage(
       fluidRow(column(4, checkboxInput("vir_spec", label = "Species", value = TRUE)),
                column(4, checkboxInput("vir_sero", label = "Serogroup", value = FALSE)),
                column(4, checkboxInput("vir_seq_type", label = "Seq. Type", value = FALSE))),
-      actionButton(inputId = "gen_tables",
-                   label = "Generate tables")
+      actionButton(inputId = "gen_output",
+                   label = "Generate output")
     ),
     
     # Show a tables for all fields and gene fields
@@ -66,10 +66,15 @@ shinyUI(fluidPage(
                  tags$p(),
                  DT::dataTableOutput('stats_analysis')),
         tabPanel("Visualization",
-                 tags$p(),
-                 downloadButton('download_vis'),
-                 tags$p(),
-                 plotOutput('vis_plot'))
+                 #tags$p(),
+                 #downloadButton('download_vis'),
+                 #tags$p(),
+                 tags$h4("Species", style = "color:purple"),
+                 uiOutput('spec_plots'),
+                 tags$h4("Serogroups", style = "color:purple"),
+                 uiOutput('sero_plots'),
+                 tags$h4("Sequence Types", style = "color:purple"),
+                 uiOutput('seq_type_plots'))
       )
     )
   )

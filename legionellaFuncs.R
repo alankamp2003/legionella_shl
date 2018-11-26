@@ -51,7 +51,7 @@ setCovAndIden <- function(cov, iden, row, col, aggr_by_gene) {
 }
 
 setCovAndIdenMultiRow <- function(cov, iden, row_start, row_end, col, aggr_by_gene) {
-  print(paste("row_start:", row_start, "row_end:", row_end, "col:", col))
+  #print(paste("row_start:", row_start, "row_end:", row_end, "col:", col))
   aggr_by_gene[row_start : row_end, col] <- cov
   aggr_by_gene[row_start : row_end, col+1] <- iden
 }
@@ -397,11 +397,11 @@ getPlotList <- function(plot_hits) {
       i <- i
       #print(paste("i:", i, cols[i]))
       #print(paste("plot_hits[,i]", plot_hits[,i]))
-      ylabel <- ifelse(i == 2, "Percentage", "")
+      #ylabel <- ifelse(i == 2, "Percentage", "")
       gplot <- ggplot(plot_hits, aes(x = plot_hits[,1], y = plot_hits[,i], fill = plot_hits[,1], ymax=100, ymin=0)) +
                           geom_bar(stat="identity", position = "dodge", width = 0.2, show.legend = FALSE) +
                           #xlab(cols[1]) + ylab("Percentage") +  ggtitle(cols[i]) +
-                          xlab("") +ylab(ylabel) +  ggtitle(cols[i]) +
+                          xlab("") +ylab("Percentage") +  ggtitle(cols[i]) +
                           # + theme_bw() +                                                                                              
                           theme(
                             plot.title = element_text(color="red", size=18, face="bold.italic", hjust = 0.5),
@@ -419,6 +419,7 @@ getPlotList <- function(plot_hits) {
 getSpecPlotList <- function(vir_hits) {
   spec_plots <- list()
   cols <- colnames(vir_hits)
+  #print(cols)
   if ("Species" %in% cols) {
     spec_hits <- filter(vir_hits, Species != "")
     if (nrow(spec_hits) > 0) {

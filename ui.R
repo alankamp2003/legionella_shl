@@ -69,11 +69,11 @@ shinyUI(fluidPage(
                  #tags$p(),
                  #downloadButton('download_vis'),
                  #tags$p(),
-                 tags$h4("Species", style = "color:purple"),
+                 tags$h4("Gene percentage by species", style = "color:purple"),
                  uiOutput('spec_plots'),
-                 tags$h4("Serogroups", style = "color:purple"),
+                 tags$h4("Gene percentage by serogroup", style = "color:purple"),
                  uiOutput('sero_plots'),
-                 tags$h4("Sequence Types", style = "color:purple"),
+                 tags$h4("Gene percentage by sequence type", style = "color:purple"),
                  uiOutput('seq_type_plots'))
       )
     )

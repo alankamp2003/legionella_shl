@@ -54,9 +54,10 @@ storePlots <- function(plot_list, prefix) {
 
 # Displays the plots contained in the passed list in "Visualization" tab; "prefix" is used to 
 # find specific plots that are stored in the passed output already 
-displayPlots <- function(plot_list, prefix, output) {
+displayPlots <- function(plot_list, prefix, output, plotUI) {
   #print(paste("plots", length(plot_list)))
   if (length(plot_list) > 0) {
+    show(plotUI)
     for (i in 1:length(plot_list)) {
       # Need local so that each item gets its own number. Without it, the value
       # of i in the renderPlot() will be the same across all instances, because
@@ -69,6 +70,8 @@ displayPlots <- function(plot_list, prefix, output) {
         }, height = 200, width = 300)
       })
     }
+  } else {
+    hide(plotUI)
   }
 }
 
@@ -208,7 +211,10 @@ shinyServer(function(input, output, session) {
     validate(validateInput(input))
     fields <- tables()$virulence_hits
     toggleDLButton('download_vir_hits', fields)
-    datatable(fields, options = list(pageLength = 10), rownames= FALSE)
+    num_cols <- ncol(fields)
+    datatable(fields, options = list(pageLength = 10,
+                                     columnDefs = list(list(className = 'dt-right', targets = 2:num_cols-1))),
+                  rownames= FALSE)
   })
   
   output$stats_analysis <- renderDataTable({
@@ -216,7 +222,26 @@ shinyServer(function(input, output, session) {
     validate(validateInput(input))
     fields <- tables()$stats_analysis
     toggleDLButton('download_stats_ana', fields)
-    datatable(fields, options = list(pageLength = 10), rownames= FALSE)
+    datatable(fields, options = list(pageLength = 10, rowCallback = JS(
+      'function(row, data) {
+        /* 
+         * Bold and color cells where p-value <= 0.001; color cells where "NA(No diff)"
+         * is being shown; do one of these things in all columns showing genes
+         */
+        var i;
+        for (i = 1; i < data.length; i++) {
+          //console.log("data[i] <= 10.0 "+(parseFloat(data[i]) <= 10.0))
+          if (!isNaN(data[i])){  
+            if (parseFloat(data[i]) <= 0.001) {
+              $("td:eq("+i+")", row).css("font-weight", "bold");
+              $("td:eq("+i+")", row).css("color", "red");
+            }
+          } else {
+              $("td:eq("+i+")", row).css("color", "blue");
+          }
+        }
+      }'
+    )), rownames= FALSE)
   })
   
   # output$plot1 <- renderPlot({
@@ -286,8 +311,8 @@ shinyServer(function(input, output, session) {
   # Call renderPlot for each one. Plots are only actually generated when they
   # are visible on the web page.
   observe({
-    displayPlots(tables()$plots$spec_plots, "spec_plot", output)
-    displayPlots(tables()$plots$sero_plots, "sero_plot", output)
-    displayPlots(tables()$plots$seq_type_plots, "seq_type_plot", output)
+    displayPlots(tables()$plots$spec_plots, "spec_plot", output, plotUI = "spec_plots")
+    displayPlots(tables()$plots$sero_plots, "sero_plot", output, plotUI = "sero_plots")
+    displayPlots(tables()$plots$seq_type_plots, "seq_type_plot", output, plotUI = "seq_type_plots")
   })
 })

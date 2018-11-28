@@ -220,28 +220,52 @@ getPercentage <- function(vir_hit) {
   getInteger("^.+\\(|\\)", vir_hit)
 }
 
+# Returns a string containing zeros repeated the passed number of times
+repeatZeros <- function(num) {
+  paste(rep("0", num), collapse = "")
+}
+
 # Truncates the passed number value to the specified number of decimal digits and returns it 
 # as a double; doesn't truncate if the value contains the exponential symbol "e"
 getTruncValue <- function(number_val, digits) {
   #print(paste("start", number_val))
+  val <- as.character(number_val)
   if (!is.null(number_val) && !is.nan(number_val)) {
      val <- format(number_val, digits = digits)
      #print(val)
      # find out if number_val contains "e"; if it does, return number_val as is;
-     # otherwise truncate the digits after the decimal point to the passed value
+     # otherwise truncate the digits after the decimal point to the passed number of digits ("digits");
+     # appends zeroes at the end if number_val doesn't contain enough digits as specified by "digits" 
      val_vec <- unlist(grep("e", val, ignore.case = TRUE))
      #print(paste("val_vec1", val_vec))
      if (length(val_vec) == 0) {
        val_vec <- unlist(strsplit(val, "\\."))
        #print(paste("val_vec2", val_vec))
        if (length(val_vec) > 0) {
-          val <- paste(val_vec[1], ".", substr(val_vec[2], 1, digits), sep = "")
+          if (length(val_vec) > 1) {
+              #print(paste("length val_vec[2]", length(val_vec[2])))
+              num_chars <- nchar(val_vec[2])
+              if (num_chars >= digits) {
+                 suffix <- substr(val_vec[2], 1, digits)
+              } else {
+                 suffix <- paste(val_vec[2], repeatZeros(digits-num_chars), sep = "")
+              }
+          } else {
+              suffix <- repeatZeros(digits)
+          }
+          #val <- paste(val_vec[1], ".", substr(val_vec[2], 1, digits), sep = "")
+          #print(paste("suffix", suffix))
+          val <- paste(val_vec[1], ".", suffix, sep = "")
+          #print(paste("val1", val))
        }
      }
-     number_val <- as.double(val)
+     #print(paste("val2", val))
+     #number_val <- as.double(val)
+     #print(paste("number_val", number_val))
   }
-  #print(paste("end", number_val))
-  number_val
+  #print(paste("end", val))
+  #number_val
+  val
 } 
 
 # Returns a vector containing the number of hits and no hits for the gene at the passed column
@@ -255,8 +279,8 @@ getHitsVector <- function(vir_hits, row, col) {
 # The passed data frame contains two rows of virulence hits; the rows are for hits between
 # two entities at the same level i.e. species, serogroup or sequence type; the first column
 # is for an entity's total hits across all genes; the subsequent columns are for specific 
-# genes' hits; computes chi-square p-values for all genes and returns the values as a vector 
-getChiSquareVector <- function(vir_hits) {
+# genes' hits; computes Fisher's exact p-values for all genes and returns the values as a vector 
+getFisherExactVector <- function(vir_hits) {
   p_vals <- character(ncol(vir_hits)-1)
   j = 1
   for (i in 2:ncol(vir_hits)) {
@@ -265,25 +289,22 @@ getChiSquareVector <- function(vir_hits) {
     r2 <- getHitsVector(vir_hits, 2, i)
     #print(r2)
     matrixa <- matrix(c(r1,r2), 2, byrow=TRUE)
-    chi_test <- chisq.test(matrixa, correct=FALSE)
-    p_val <- getTruncValue(chi_test$p.value, 4)
-    #p_val <- ifelse(is.nan(p_val), "NA (No Diff)", format(p_val, digits = 4))
-    p_val <- ifelse(is.nan(p_val), "NA (No Diff)", as.character(p_val))
-    p_vals[j] <- p_val
+    fisher_test <- fisher.test(matrixa)
+    p_vals[j] <- getTruncValue(fisher_test$p.value, 4)
     j <- j + 1
   }
   p_vals
 }
 
 # The passed data frame (vir_hits) contains virulence hits in all "numeric" columns at a particular level
-# e.g. species; "chi_sqr_vals" contains the chi-square p-values computed so far at other levels; calculates
-# p-values at this level, adds them to chi_sqr_vals and returns that; the first column in the returned data frame
-# shows the names of the entities (e.g. species) being compared; adds "prefix" (e.g. "SG"), before
-# those names, if specified
-getChiSquareVals <- function(vir_hits, chi_sqr_vals, prefix="") {
+# e.g. species; "fisher_exact_vals" contains the Fisher's exact test p-values computed so far at other levels;
+# calculates p-values at this level, adds them to fisher_exact_vals and returns that; the first column in the
+# returned data frame shows the names of the entities (e.g. species) being compared; adds "prefix" (e.g. "SG"),
+# before those names, if specified
+getFisherExactVals <- function(vir_hits, fisher_exact_vals, prefix="") {
   #print(spec_hits)
-  if (is.null(chi_sqr_vals))
-    chi_sqr_vals <- tibble()
+  if (is.null(fisher_exact_vals))
+    fisher_exact_vals <- tibble()
   i = 1
   num_rows <- nrow(vir_hits)
   # calculate p-values for each pair of species, serogroups etc. i.e. each pair of rows
@@ -296,20 +317,20 @@ getChiSquareVals <- function(vir_hits, chi_sqr_vals, prefix="") {
       comp <- c(paste(prefix, vir_hits[i,1], sep = ""), paste(prefix, vir_hits[j,1], sep = ""))
       int_vals <- rbind(int_vals, sapply(num_vals[i,], getCount))
       int_vals <- rbind(int_vals, sapply(num_vals[j,], getCount))
-      p_vals <- getChiSquareVector(int_vals)
+      p_vals <- getFisherExactVector(int_vals)
       p_vals <- c(paste(comp, collapse = " vs. "), p_vals)
-      chi_sqr_vals <- rbind(chi_sqr_vals, p_vals)
+      fisher_exact_vals <- rbind(fisher_exact_vals, p_vals)
       j <- j+1
     }
     i <- i+1
   }
-  chi_sqr_vals
+  fisher_exact_vals
   #print(int_hits)
 }
 
-# Returns the column names used for the table showing chi-square p-values; the first column is for showing 
+# Returns the column names used for the table showing Fisher's exact p-values; the first column is for showing 
 # which entities e.g. species are being compared; the rest of the columns show gene names
-getChiSquareColNames <- function(col_names, spec_hits) {
+getFisherExactColNames <- function(col_names, spec_hits) {
   if (is.null(col_names)) {
     col_names <- c("Comparison", colnames(spec_hits)[3:ncol(spec_hits)])
     #print(cols)
@@ -317,8 +338,8 @@ getChiSquareColNames <- function(col_names, spec_hits) {
   col_names
 }
 
-# Returns the column names and chi-square p-values to be shown at the species level
-getSpecChiSquareVals <- function(vir_hits, col_names, chi_sqr_vals) {
+# Returns the column names and Fisher's exact p-values to be shown at the species level
+getSpecFisherExactVals <- function(vir_hits, col_names, fisher_exact_vals) {
   spec_hits <- filter(vir_hits, Species != "")
   if (nrow(spec_hits) > 1) {
     num_col_start <- 2
@@ -329,14 +350,14 @@ getSpecChiSquareVals <- function(vir_hits, col_names, chi_sqr_vals) {
     if ("Sequence Type" %in% colnames(spec_hits))
       num_col_start <- num_col_start + 1
     spec_hits <- spec_hits[, c(1, num_col_start:ncol(spec_hits))]
-    col_names <- getChiSquareColNames(col_names, spec_hits)
-    chi_sqr_vals <- getChiSquareVals(spec_hits, chi_sqr_vals)
+    col_names <- getFisherExactColNames(col_names, spec_hits)
+    fisher_exact_vals <- getFisherExactVals(spec_hits, fisher_exact_vals)
   }
-  list(col_names = col_names, chi_sqr_vals = chi_sqr_vals)
+  list(col_names = col_names, fisher_exact_vals = fisher_exact_vals)
 }
 
-# Returns the column names and chi-square p-values to be shown at the serogroup level
-getSeroChiSquareVals <- function(vir_hits, col_names, chi_sqr_vals) {
+# Returns the column names and Fisher's exact p-values to be shown at the serogroup level
+getSeroFisherExactVals <- function(vir_hits, col_names, fisher_exact_vals) {
   if ("Serogroup" %in% colnames(vir_hits)) {
     sero_hits <- filter(vir_hits, Serogroup != "")
     if (nrow(sero_hits) > 1) {
@@ -346,44 +367,44 @@ getSeroChiSquareVals <- function(vir_hits, col_names, chi_sqr_vals) {
       if ("Sequence Type" %in% colnames(sero_hits))
         num_col_start <- num_col_start + 1
       sero_hits <- sero_hits[, c(2, num_col_start:ncol(sero_hits))]
-      col_names <- getChiSquareColNames(col_names, sero_hits)
-      chi_sqr_vals <- getChiSquareVals(sero_hits, chi_sqr_vals, prefix = "SG")
+      col_names <- getFisherExactColNames(col_names, sero_hits)
+      fisher_exact_vals <- getFisherExactVals(sero_hits, fisher_exact_vals, prefix = "SG")
     }
   }
-  list(col_names = col_names, chi_sqr_vals = chi_sqr_vals)
+  list(col_names = col_names, fisher_exact_vals = fisher_exact_vals)
 }
 
-# Returns the column names and chi-square p-values to be shown at the sequence type level
-getSeqTypeChiSquareVals <- function(vir_hits, col_names, chi_sqr_vals) {
+# Returns the column names and Fisher's exact p-values to be shown at the sequence type level
+getSeqTypeFisherExactVals <- function(vir_hits, col_names, fisher_exact_vals) {
   if ("Sequence Type" %in% colnames(vir_hits)) {
     seq_type_hits <- filter(vir_hits, `Sequence Type` != "") 
     if (nrow(seq_type_hits) > 1) {
       num_col_start <- 4
       # only keep columns that either have the names of the sequence or are "numeric"
       seq_type_hits <- seq_type_hits[, c(3, num_col_start:ncol(seq_type_hits))]
-      col_names <- getChiSquareColNames(col_names, seq_type_hits)
-      chi_sqr_vals <- getChiSquareVals(seq_type_hits, chi_sqr_vals, prefix = "ST")
+      col_names <- getFisherExactColNames(col_names, seq_type_hits)
+      fisher_exact_vals <- getFisherExactVals(seq_type_hits, fisher_exact_vals, prefix = "ST")
     }
   }
-  list(col_names = col_names, chi_sqr_vals = chi_sqr_vals)
+  list(col_names = col_names, fisher_exact_vals = fisher_exact_vals)
 }
 
 # Goes through the passed data frame containing virulence hits at multiple levels e.g. species, serogroup, sequence type and returns a data frame
-# containing chi-square p values at all of those levels
-getAllChiSquareVals <- function(vir_hits) {
+# containing Fisher's exact p-values at all of those levels
+getAllFisherExactVals <- function(vir_hits) {
   col_names <- NULL
-  chi_sqr_vals <- NULL
+  fisher_exact_vals <- NULL
 
-  spec_vals <- getSpecChiSquareVals(vir_hits, col_names, chi_sqr_vals)
-  sero_vals <- getSeroChiSquareVals(vir_hits, spec_vals$col_names, spec_vals$chi_sqr_vals)
-  seq_type_vals <- getSeqTypeChiSquareVals(vir_hits, sero_vals$col_names, sero_vals$chi_sqr_vals)
+  spec_vals <- getSpecFisherExactVals(vir_hits, col_names, fisher_exact_vals)
+  sero_vals <- getSeroFisherExactVals(vir_hits, spec_vals$col_names, spec_vals$fisher_exact_vals)
+  seq_type_vals <- getSeqTypeFisherExactVals(vir_hits, sero_vals$col_names, sero_vals$fisher_exact_vals)
   col_names <- seq_type_vals$col_names
-  chi_sqr_vals <- seq_type_vals$chi_sqr_vals
-  #print(chi_sqr_vals)
-  if (!is.null(chi_sqr_vals)) {
-    colnames(chi_sqr_vals) <- col_names
+  fisher_exact_vals <- seq_type_vals$fisher_exact_vals
+  #print(fisher_exact_vals)
+  if (!is.null(fisher_exact_vals)) {
+    colnames(fisher_exact_vals) <- col_names
   }
-  chi_sqr_vals
+  fisher_exact_vals
 }
 
 # Creates and returns a list of plots from the passed data frame; the first column is the name of the level e.g. "Species" and shows the 
@@ -401,10 +422,10 @@ getPlotList <- function(plot_hits) {
       gplot <- ggplot(plot_hits, aes(x = plot_hits[,1], y = plot_hits[,i], fill = plot_hits[,1], ymax=100, ymin=0)) +
                           geom_bar(stat="identity", position = "dodge", width = 0.2, show.legend = FALSE) +
                           #xlab(cols[1]) + ylab("Percentage") +  ggtitle(cols[i]) +
-                          xlab("") +ylab("Percentage") +  ggtitle(cols[i]) +
+                          xlab("") +ylab("Percentage") +  ggtitle(cols[i]) + coord_cartesian(ylim=c(0,100)) +
                           # + theme_bw() +                                                                                              
                           theme(
-                            plot.title = element_text(color="red", size=18, face="bold.italic", hjust = 0.5),
+                            plot.title = element_text(color="red", size=16, face="bold.italic", hjust = 0.5),
                             axis.title.x = element_text(color="#993333", size=14, face="bold"),
                             axis.title.y = element_text(color="#993333", size=14, face="bold")
                           )
@@ -675,7 +696,7 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
   
   fields_with_seq <- select(fields_with_seq, -SEQUENCE)
   vir_hits <- getVirulenceHits(aggr_by_gene, meta, show_spec, show_sero, show_seq_type)
-  chi_sqr_vals <- getAllChiSquareVals(vir_hits)
+  fisher_exact_vals <- getAllFisherExactVals(vir_hits)
   plots <- getPlots(vir_hits)
-  list(all_fields = fields_with_seq, gene_fields = aggr_by_gene, virulence_hits = vir_hits, stats_analysis = chi_sqr_vals, plots = plots)
+  list(all_fields = fields_with_seq, gene_fields = aggr_by_gene, virulence_hits = vir_hits, stats_analysis = fisher_exact_vals, plots = plots)
 }

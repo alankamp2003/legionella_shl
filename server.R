@@ -225,28 +225,19 @@ shinyServer(function(input, output, session) {
     datatable(fields, options = list(pageLength = 10, rowCallback = JS(
       'function(row, data) {
         /* 
-         * Bold and color cells where p-value <= 0.001; color cells where "NA(No diff)"
-         * is being shown; do one of these things in all columns showing genes
+         * Bold and color cells where p-value <= 0.001
          */
         var i;
         for (i = 1; i < data.length; i++) {
           //console.log("data[i] <= 10.0 "+(parseFloat(data[i]) <= 10.0))
-          if (!isNaN(data[i])){  
-            if (parseFloat(data[i]) <= 0.001) {
+          if (!isNaN(data[i]) && parseFloat(data[i]) <= 0.001) {
               $("td:eq("+i+")", row).css("font-weight", "bold");
               $("td:eq("+i+")", row).css("color", "red");
             }
-          } else {
-              $("td:eq("+i+")", row).css("color", "blue");
           }
-        }
-      }'
+        }'
     )), rownames= FALSE)
   })
-  
-  # output$plot1 <- renderPlot({
-  #   tables()$plots$plot1
-  # })
   
   output$spec_plots <- renderUI({
     storePlots(tables()$plots$spec_plots, "spec_plot")
@@ -296,7 +287,7 @@ shinyServer(function(input, output, session) {
     contentType = "application/vnd.ms-excel"
   )
   
-  # Downloadable xslx of statistical analysis (chi-square values)
+  # Downloadable xslx of statistical analysis (Fisher's exact p-values)
   output$download_stats_ana <- downloadHandler(
     filename = function() {
       paste("stats_analysis", ".xlsx", sep = "")

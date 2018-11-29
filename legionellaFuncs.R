@@ -62,7 +62,7 @@ updateProg <- function(updateProgress = NULL, text) {
     updateProgress(detail = text)
 }
 
-# since the rows shown on Gene Fields tab have sequence (node) in them, there can be many repeated rows for the
+# Since the rows shown on Gene Fields tab have sequence (node) in them, there can be many repeated rows for the
 # same combination of gene, species, serogroup and sequence type; the tibble returned here makes sure that
 # there's only one row per unique combination of those fields; it's used for the Virulence Hits tab
 getVirulenceRows <- function(gene_rows) {
@@ -80,6 +80,9 @@ getVirulenceRows <- function(gene_rows) {
       spec <- gene_rows[[i,'Species']]
       sero <- gene_rows[[i,'Serogroup']]
       seqt <- gene_rows[[i,'Sequence Type']]
+      fac <- gene_rows[[i,'Facility']]
+      cov <- gene_rows[[i,'SEQ TOTAL %COVERAGE']]
+      iden <- gene_rows[[i,'SEQ WEIGHTED %IDENTITY']]
       if (prev_id != id || prev_gene != gene || prev_spec != spec || prev_sero != sero || prev_seqt != seqt) {
         j <- j + 1
         vir_rows[j,1] <- id
@@ -87,6 +90,9 @@ getVirulenceRows <- function(gene_rows) {
         vir_rows[j,3] <- spec
         vir_rows[j,4] <- sero
         vir_rows[j,5] <- seqt
+        vir_rows[j,6] <- fac
+        vir_rows[j,7] <- cov
+        vir_rows[j,8] <- iden
       }
       prev_id <- id
       prev_gene <- gene
@@ -94,7 +100,8 @@ getVirulenceRows <- function(gene_rows) {
       prev_sero <- sero
       prev_seqt <- seqt
     }
-    colnames(vir_rows) <- c('ID','GENE', 'Species', 'Serogroup', 'Sequence Type')
+    colnames(vir_rows) <- c('ID','GENE', 'Species', 'Serogroup', 'Sequence Type', 'Facility', 
+                            'SEQ TOTAL %COVERAGE', 'SEQ WEIGHTED %IDENTITY')
     return(vir_rows)
   }
   gene_rows
@@ -142,11 +149,13 @@ getSeqTypeHitsRow <- function(seq_name, seq_hits) {
   hits_row <- c("", "", seq_name, seq_hits)
 }
 
-#Returns the data to be shown in the "Virulence Hits" tab 
-getVirulenceHits <- function(gene_rows, meta_rows, show_spec, show_sero, show_seq_type) {
+# Returns the data to be shown in the "Virulence Hits" tab and to be used for the scatter plots shown
+# under the "Visualization" tab
+getVirulenceData <- function(gene_rows, meta_rows, show_spec, show_sero, show_seq_type) {
   vir_hits <- data.frame()
+  vir_rows <- NULL
   if (!show_spec)
-    return(vir_hits)
+    return(list(vir_hits = vir_hits, vir_rows = vir_rows))
   vir_rows <- getVirulenceRows(gene_rows)
   # get the names of the species, serogroups, sequence types and genes from the data
   species <- unlist(distinct(vir_rows, Species), use.names = FALSE)
@@ -196,7 +205,7 @@ getVirulenceHits <- function(gene_rows, meta_rows, show_spec, show_sero, show_se
   if (nrow(vir_hits) > 0) {
     colnames(vir_hits) <- col_names
   }
-  vir_hits
+  return(list(vir_hits = vir_hits, vir_rows = vir_rows))
 }
 
 # The passed virulence hit is supposed to be in the format "AB(X)", where A and B are integers
@@ -407,19 +416,67 @@ getAllFisherExactVals <- function(vir_hits) {
   fisher_exact_vals
 }
 
-# Creates and returns a list of plots from the passed data frame; the first column is the name of the level e.g. "Species" and shows the 
+# Returns a scatter plot to be shown under the "Visualization" tab; the passed data fram provides the data for the plot;
+# the passed indexes specify the columns for the x axis, y axis, shape and color respectively
+getPlot <- function(vir_rows, x_col, y_col, shape_col, color_col, x_lab, y_lab) {
+  plot <- ggplot(vir_rows, aes(x = vir_rows[x_col][[1]], y = vir_rows[y_col][[1]], shape = as.factor(vir_rows[shape_col][[1]]), 
+                               color = vir_rows[color_col][[1]])) + geom_point(size = 5) +
+                               xlab(x_lab) + ylab(y_lab) + scale_shape_discrete(shape_col) + scale_color_discrete(color_col) +
+                               guides(colour = guide_legend(order = 1), shape = guide_legend(order = 2)) +
+                               theme(
+                                     legend.box = "horizontal", 
+                                     legend.position = "bottom", 
+                                     axis.title.x = element_text(color="#993333", size=14, face="bold"),
+                                     axis.title.y = element_text(color="#993333", size=14, face="bold")
+                                    )
+                              
+  #geom_density()
+  plot
+}
+
+# Returns the index of the column with name column from the passed vector of column names
+# returns zero if the column was not found in the vector
+getColIndex <- function(cols, col) {
+  inds <- which(cols == col)
+  ind <- ifelse(length(inds) > 0, inds[1], 0)
+  ind
+}
+
+# Returns a list containing the scatter plots to be shown under the "Visualization" tab;
+# scatter_noise is used to specify the noise introduced in %identity and %coverage to visualize
+# the clusters more clearly
+getPlots <- function(vir_rows, scatter_noise) {
+  plots <- list()
+  if (!is.null(vir_rows)) {
+    cols <- colnames(vir_rows)
+    x_col <- "IDENTITY"
+    y_col <- "COVERAGE"
+    color_col <- "Facility"
+    num_rows <- nrow(vir_rows)
+    x_lab <- paste("Seq Weighted % Identity +/-", scatter_noise)
+    y_lab <- paste("Seq Total \n % Coverage \n +/-", scatter_noise)
+    vir_rows <- mutate(vir_rows, IDENTITY = `SEQ WEIGHTED %IDENTITY` + runif(num_rows, -scatter_noise, scatter_noise)) %>%
+                mutate(COVERAGE = `SEQ TOTAL %COVERAGE` + runif(num_rows, -scatter_noise, scatter_noise))
+    plots$spec_plot <- getPlot(vir_rows, x_col, y_col, "Species", color_col, x_lab, y_lab)
+    plots$sero_plot <- getPlot(vir_rows, x_col, y_col, "Serogroup", color_col, x_lab, y_lab)
+    plots$seq_type_plot <- getPlot(vir_rows, x_col, y_col, "Sequence Type", color_col, x_lab, y_lab)
+  }
+  plots
+}
+
+# Creates and returns a list of charts from the passed data frame; the first column is the name of the level e.g. "Species" and shows the 
 # entities at that level; the second column onwards show the percentage of virulence hits for each gene for a given entity;
-# the plots show bars depicting the percentage for each gene for a given entity
-getPlotList <- function(plot_hits) {
-  cols <- colnames(plot_hits)
-  plot_list <- list()
-  for (i in 2:ncol(plot_hits)) {
+# the charts show bars depicting the percentage for each gene for a given entity
+getChartList <- function(chart_hits) {
+  cols <- colnames(chart_hits)
+  chart_list <- list()
+  for (i in 2:ncol(chart_hits)) {
     local({
       i <- i
       #print(paste("i:", i, cols[i]))
-      #print(paste("plot_hits[,i]", plot_hits[,i]))
+      #print(paste("chart_list[,i]", chart_list[,i]))
       #ylabel <- ifelse(i == 2, "Percentage", "")
-      gplot <- ggplot(plot_hits, aes(x = plot_hits[,1], y = plot_hits[,i], fill = plot_hits[,1], ymax=100, ymin=0)) +
+      gplot <- ggplot(chart_hits, aes(x = chart_hits[,1], y = chart_hits[,i], fill = chart_hits[,1], ymax=100, ymin=0)) +
                           geom_bar(stat="identity", position = "dodge", width = 0.2, show.legend = FALSE) +
                           #xlab(cols[1]) + ylab("Percentage") +  ggtitle(cols[i]) +
                           xlab("") +ylab("Percentage") +  ggtitle(cols[i]) + coord_cartesian(ylim=c(0,100)) +
@@ -429,16 +486,16 @@ getPlotList <- function(plot_hits) {
                             axis.title.x = element_text(color="#993333", size=14, face="bold"),
                             axis.title.y = element_text(color="#993333", size=14, face="bold")
                           )
-      plot_list[[i-1]] <<- gplot
+      chart_list[[i-1]] <<- gplot
     })
   }
-  #print(length(plot_list))
-  plot_list
+  #print(length(chart_list))
+  chart_list
 }
 
-# Returns the species level plots to be shown in the "Visualization" tab
-getSpecPlotList <- function(vir_hits) {
-  spec_plots <- list()
+# Returns the species level charts to be shown in the "Visualization" tab
+getSpecChartList <- function(vir_hits) {
+  spec_charts <- list()
   cols <- colnames(vir_hits)
   #print(cols)
   if ("Species" %in% cols) {
@@ -455,15 +512,15 @@ getSpecPlotList <- function(vir_hits) {
       num_cols <- ncol(spec_hits)
       spec_hits[2:num_cols] <- lapply(spec_hits[2:num_cols], getPercentage)
       #print(spec_hits)
-      spec_plots <- getPlotList(spec_hits)
+      spec_charts <- getChartList(spec_hits)
     }
   }
-  spec_plots
+  spec_charts
 }
 
-# Returns the serogroup level plots to be shown in "Visualization" tab
-getSeroPlotList <- function(vir_hits) {
-  sero_plots <- list()
+# Returns the serogroup level charts to be shown in "Visualization" tab
+getSeroChartList <- function(vir_hits) {
+  sero_charts <- list()
   cols <- colnames(vir_hits)
   if ("Serogroup" %in% cols) {
     sero_hits <- filter(vir_hits, Serogroup != "")
@@ -477,15 +534,15 @@ getSeroPlotList <- function(vir_hits) {
       num_cols <- ncol(sero_hits)
       sero_hits[2:num_cols] <- lapply(sero_hits[2:num_cols], getPercentage)
       #print(sero_hits)
-      sero_plots <- getPlotList(sero_hits)
+      sero_charts <- getChartList(sero_hits)
     }
   }
-  sero_plots
+  sero_charts
 }
 
-# Returns the sequence type level plots to be shown in "Visualization" tab
-getSeqTypePlotList <- function(vir_hits) {
-  seq_type_plots <- list()
+# Returns the sequence type level charts to be shown in "Visualization" tab
+getSeqTypeChartList <- function(vir_hits) {
+  seq_type_charts <- list()
   cols <- colnames(vir_hits)
   if ("Sequence Type" %in% cols) {
     seq_type_hits <- filter(vir_hits, `Sequence Type` != "")
@@ -497,18 +554,18 @@ getSeqTypePlotList <- function(vir_hits) {
       num_cols <- ncol(seq_type_hits)
       seq_type_hits[2:num_cols] <- lapply(seq_type_hits[2:num_cols], getPercentage)
       #print(seq_type_hits)
-      seq_type_plots <- getPlotList(seq_type_hits)
+      seq_type_charts <- getChartList(seq_type_hits)
     }
   }
-  seq_type_plots
+  seq_type_charts
 }
 
-# Returns the list containing plots to be shown in "Visualization" tab
-getPlots <- function(vir_hits) {
-  spec_plots <- getSpecPlotList(vir_hits)
-  sero_plots <- getSeroPlotList(vir_hits)
-  seq_type_plots <- getSeqTypePlotList(vir_hits)
-  list(spec_plots = spec_plots, sero_plots = sero_plots, seq_type_plots = seq_type_plots)
+# Returns the list containing charts to be shown in "Visualization" tab
+getCharts <- function(vir_hits) {
+  spec_charts <- getSpecChartList(vir_hits)
+  sero_charts <- getSeroChartList(vir_hits)
+  seq_type_charts <- getSeqTypeChartList(vir_hits)
+  list(spec_charts = spec_charts, sero_charts = sero_charts, seq_type_charts = seq_type_charts)
 }
 
 # link various sheets in the excel file to get the final list of fields
@@ -535,7 +592,8 @@ getInitialData <- function(excel_file, updateProgress = NULL) {
 }
 
 getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = NULL, seq_type = NULL, genes = NULL, 
-                            coverage = 0.0, identity = 0.0, show_spec, show_sero, show_seq_type, updateProgress = NULL) {
+                            coverage = 0.0, identity = 0.0, show_spec, show_sero, show_seq_type, 
+                            scatter_noise = 0.0, updateProgress = NULL) {
   # filter by species, serogroup, sequence type, genes 
   # if one or more of them have been specified
   updateProg(updateProgress, "Filtering by species")
@@ -585,6 +643,7 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
       spec <- fields_with_seq[[i,'Species']]
       sero <- fields_with_seq[[i,'Serogroup']]
       seqt <- fields_with_seq[[i,'Sequence Type']]
+      fac <- fields_with_seq[[i,'Facility']]
       if (prev_id == id) {
         if (prev_gene == gene) {
           if (prev_seq == seq) {
@@ -644,31 +703,32 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
       aggr_by_gene[j,3] <- spec
       aggr_by_gene[j,4] <- sero
       aggr_by_gene[j,5] <- seqt
-      aggr_by_gene[j,6] <- seq
-      aggr_by_gene[j,7] <- max_cov
-      aggr_by_gene[j,8] <- max_iden
+      aggr_by_gene[j,6] <- fac
+      aggr_by_gene[j,7] <- seq
+      aggr_by_gene[j,8] <- max_cov
+      aggr_by_gene[j,9] <- max_iden
       if (new_row || i == last_index) {
         if (j > 1) {
           #k <- ifelse(i == last_index, j, j - 1)
           k <- j - 1
-          aggr_by_gene[k,9] <- max_tot_cov
-          aggr_by_gene[k,10] <- max_wgt_iden
+          aggr_by_gene[k,10] <- max_tot_cov
+          aggr_by_gene[k,11] <- max_wgt_iden
           if (i == last_index) {
             k <- j
-            aggr_by_gene[k,9] <- max_tot_cov
-            aggr_by_gene[k,10] <- max_wgt_iden
+            aggr_by_gene[k,10] <- max_tot_cov
+            aggr_by_gene[k,11] <- max_wgt_iden
           }
           # if it's a new gene, update the previous gene's maximum %coverage and %identity
           # in all the rows that are showing it; also set this row's index as the first
           # index for the current gene
           if (new_gene || i == last_index) {
             k <- j - 1
-            aggr_by_gene[gene_first_index : k,11] <- gene_max_tot_cov
-            aggr_by_gene[gene_first_index : k,12] <- gene_max_wgt_iden
+            aggr_by_gene[gene_first_index : k,12] <- gene_max_tot_cov
+            aggr_by_gene[gene_first_index : k,13] <- gene_max_wgt_iden
             if (i == last_index) {
               k <- j
-              aggr_by_gene[gene_first_index : k,11] <- gene_max_tot_cov
-              aggr_by_gene[gene_first_index : k,12] <- gene_max_wgt_iden
+              aggr_by_gene[gene_first_index : k,12] <- gene_max_tot_cov
+              aggr_by_gene[gene_first_index : k,13] <- gene_max_wgt_iden
             }
             gene_first_index <- j
             gene_max_tot_cov <- -1.0
@@ -684,7 +744,7 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
       prev_seq <- seq
     }
     colnames(aggr_by_gene) <- c('ID', 'GENE', 'Species', 'Serogroup', 'Sequence Type',
-                                'SEQUENCE', 'SEQ MAX %COVERAGE', 'SEQ MAX %IDENTITY', 
+                                'Facility', 'SEQUENCE', 'SEQ MAX %COVERAGE', 'SEQ MAX %IDENTITY', 
                                 'SEQ TOTAL %COVERAGE',  'SEQ WEIGHTED %IDENTITY',
                                 'GENE MAX TOTAL %COVERAGE', 'GENE MAX WEIGHTED %IDENTITY')
   }
@@ -695,8 +755,10 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
   aggr_by_gene <- filterByGT(aggr_by_gene, "SEQ WEIGHTED %IDENTITY", identity)
   
   fields_with_seq <- select(fields_with_seq, -SEQUENCE)
-  vir_hits <- getVirulenceHits(aggr_by_gene, meta, show_spec, show_sero, show_seq_type)
-  fisher_exact_vals <- getAllFisherExactVals(vir_hits)
-  plots <- getPlots(vir_hits)
-  list(all_fields = fields_with_seq, gene_fields = aggr_by_gene, virulence_hits = vir_hits, stats_analysis = fisher_exact_vals, plots = plots)
+  vir_data <- getVirulenceData(aggr_by_gene, meta, show_spec, show_sero, show_seq_type)
+  fisher_exact_vals <- getAllFisherExactVals(vir_data$vir_hits)
+  charts <- getCharts(vir_data$vir_hits)
+  plots <- getPlots(vir_data$vir_rows, scatter_noise)
+  list(all_fields = fields_with_seq, gene_fields = aggr_by_gene, virulence_hits = vir_data$vir_hits, 
+                    stats_analysis = fisher_exact_vals, plots = plots, charts = charts)
 }

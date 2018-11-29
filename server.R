@@ -29,6 +29,8 @@ validateInput <- function(input) {
     "Please enter a valid number as Seq Total % Coverage"
   } else if (!is.numeric(input$identity)) {
     "Please enter a valid number as Seq Weighted % Identity"
+  } else if (!is.numeric(input$scatter_noise)) {
+    "Please enter a valid number as Scatter Noise"
   } else {
     NULL
   }
@@ -44,8 +46,8 @@ getSelectOpts <- function(options) {
 
 # Stores the plots contained in the passed list as plotOutput objects so that they can be displayed
 # later in "Visualization" tab; "prefix" is used so that plots can be found at the time of display
-storePlots <- function(plot_list, prefix) {
-  plot_output_list <- lapply(1:length(plot_list), function(i) {
+storeCharts <- function(chart_list, prefix) {
+  plot_output_list <- lapply(1:length(chart_list), function(i) {
     plotname <- paste(prefix, i, sep="")
     plotOutput(plotname, height = 280, width = 300, inline = TRUE)
   })
@@ -54,11 +56,11 @@ storePlots <- function(plot_list, prefix) {
 
 # Displays the plots contained in the passed list in "Visualization" tab; "prefix" is used to 
 # find specific plots that are stored in the passed output already 
-displayPlots <- function(plot_list, prefix, output, plotUI) {
+displayCharts <- function(chart_list, prefix, output, plotUI) {
   #print(paste("plots", length(plot_list)))
-  if (length(plot_list) > 0) {
+  if (length(chart_list) > 0) {
     show(plotUI)
-    for (i in 1:length(plot_list)) {
+    for (i in 1:length(chart_list)) {
       # Need local so that each item gets its own number. Without it, the value
       # of i in the renderPlot() will be the same across all instances, because
       # of when the expression is evaluated.
@@ -66,7 +68,7 @@ displayPlots <- function(plot_list, prefix, output, plotUI) {
         my_i <- i
         plotname <- paste(prefix, my_i, sep="")
         output[[plotname]] <- renderPlot(expr = {
-          plot_list[[my_i]]
+          chart_list[[my_i]]
         }, height = 200, width = 300)
       })
     }
@@ -186,7 +188,7 @@ shinyServer(function(input, output, session) {
                               coverage = input$coverage, identity = input$identity, 
                               genes = input$gene, show_spec = input$vir_spec, 
                               show_sero = input$vir_sero, show_seq_type = input$vir_seq_type, 
-                              updateProgress = updateProgress)
+                              scatter_noise = input$scatter_noise, updateProgress = updateProgress)
     output
   })
   
@@ -239,16 +241,28 @@ shinyServer(function(input, output, session) {
     )), rownames= FALSE)
   })
   
-  output$spec_plots <- renderUI({
-    storePlots(tables()$plots$spec_plots, "spec_plot")
+  output$spec_plot <- renderPlot({
+    tables()$plots$spec_plot
   })
   
-  output$sero_plots <- renderUI({
-    storePlots(tables()$plots$sero_plots, "sero_plot")
+  output$sero_plot <- renderPlot({
+    tables()$plots$sero_plot
   })
   
-  output$seq_type_plots <- renderUI({
-    storePlots(tables()$plots$seq_type_plots, "seq_type_plot")
+  output$seq_type_plot <- renderPlot({
+    tables()$plots$seq_type_plot
+  })
+  
+  output$spec_charts <- renderUI({
+    storeCharts(tables()$charts$spec_charts, "spec_chart")
+  })
+  
+  output$sero_charts <- renderUI({
+    storeCharts(tables()$charts$sero_charts, "sero_chart")
+  })
+  
+  output$seq_type_charts <- renderUI({
+    storeCharts(tables()$charts$seq_type_charts, "seq_type_chart")
   })
   
   # Downloadable xslx of all fields
@@ -302,8 +316,8 @@ shinyServer(function(input, output, session) {
   # Call renderPlot for each one. Plots are only actually generated when they
   # are visible on the web page.
   observe({
-    displayPlots(tables()$plots$spec_plots, "spec_plot", output, plotUI = "spec_plots")
-    displayPlots(tables()$plots$sero_plots, "sero_plot", output, plotUI = "sero_plots")
-    displayPlots(tables()$plots$seq_type_plots, "seq_type_plot", output, plotUI = "seq_type_plots")
+    displayCharts(tables()$charts$spec_charts, "spec_chart", output, plotUI = "spec_charts")
+    displayCharts(tables()$charts$sero_charts, "sero_chart", output, plotUI = "sero_charts")
+    displayCharts(tables()$charts$seq_type_charts, "seq_type_chart", output, plotUI = "seq_type_charts")
   })
 })

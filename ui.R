@@ -33,6 +33,9 @@ shinyUI(fluidPage(
                column(6, numericInput("identity", "Seq Weighted % Identity",
                                       min = 0.0, max = 100,
                                       value = 0.0, step = 0.5))),
+      numericInput("scatter_noise", "Scatter Noise (+/-)",
+                   min = 0.0, max = 100,
+                   value = 0.0, step = 0.1),
       tags$h4("Virulence hits breakdown by"),
       fluidRow(column(4, checkboxInput("vir_spec", label = "Species", value = TRUE)),
                column(4, checkboxInput("vir_sero", label = "Serogroup", value = FALSE)),
@@ -69,12 +72,20 @@ shinyUI(fluidPage(
                  #tags$p(),
                  #downloadButton('download_vis'),
                  #tags$p(),
-                 tags$h4("Gene percentage by species", style = "color:purple"),
-                 uiOutput('spec_plots'),
-                 tags$h4("Gene percentage by serogroup", style = "color:purple"),
-                 uiOutput('sero_plots'),
-                 tags$h4("Gene percentage by sequence type", style = "color:purple"),
-                 uiOutput('seq_type_plots'))
+                 tabsetPanel(tabPanel("Gene scatter",
+                                      tags$h4("By species and facility", style = "color:purple"),
+                                      plotOutput("spec_plot", height = "210px"),
+                                      tags$h4("By serogroup and facility", style = "color:purple"),
+                                      plotOutput("sero_plot", height = "210px"),
+                                      tags$h4("By sequence type and facility", style = "color:purple"),
+                                      plotOutput("seq_type_plot", height = "210px")),
+                             tabPanel("Gene percentage",
+                                      tags$h4("By species", style = "color:purple"), 
+                                      uiOutput('spec_charts'),
+                                      tags$h4("By serogroup", style = "color:purple"), 
+                                      uiOutput('sero_charts'),
+                                      tags$h4("By sequence type", style = "color:purple"),
+                                      uiOutput('seq_type_charts'))))
       )
     )
   )

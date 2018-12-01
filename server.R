@@ -227,12 +227,12 @@ shinyServer(function(input, output, session) {
     datatable(fields, options = list(pageLength = 10, rowCallback = JS(
       'function(row, data) {
         /* 
-         * Bold and color cells where p-value <= 0.001
+         * Bold and color cells where p-value < 0.01
          */
         var i;
         for (i = 1; i < data.length; i++) {
           //console.log("data[i] <= 10.0 "+(parseFloat(data[i]) <= 10.0))
-          if (!isNaN(data[i]) && parseFloat(data[i]) <= 0.001) {
+          if (!isNaN(data[i]) && parseFloat(data[i]) < 0.01) {
               $("td:eq("+i+")", row).css("font-weight", "bold");
               $("td:eq("+i+")", row).css("color", "red");
             }

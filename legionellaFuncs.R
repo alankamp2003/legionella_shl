@@ -453,10 +453,12 @@ getPlots <- function(vir_rows, scatter_noise) {
     y_col <- "COVERAGE"
     color_col <- "Facility"
     num_rows <- nrow(vir_rows)
+    #print(paste("num vir_rows", num_rows))
     x_lab <- paste("Seq Weighted % Identity +/-", scatter_noise)
     y_lab <- paste("Seq Total \n % Coverage \n +/-", scatter_noise)
     vir_rows <- mutate(vir_rows, IDENTITY = `SEQ WEIGHTED %IDENTITY` + runif(num_rows, -scatter_noise, scatter_noise)) %>%
                 mutate(COVERAGE = `SEQ TOTAL %COVERAGE` + runif(num_rows, -scatter_noise, scatter_noise))
+    #print(paste("num vir_rows mute", num_rows))
     plots$spec_plot <- getPlot(vir_rows, x_col, y_col, "Species", color_col, x_lab, y_lab)
     plots$sero_plot <- getPlot(vir_rows, x_col, y_col, "Serogroup", color_col, x_lab, y_lab)
     plots$seq_type_plot <- getPlot(vir_rows, x_col, y_col, "Sequence Type", color_col, x_lab, y_lab)

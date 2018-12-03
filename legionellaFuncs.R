@@ -588,7 +588,7 @@ getInitialData <- function(excel_file, updateProgress = NULL) {
   
   updateProg(updateProgress, "Extracting final fields")
   fields_with_seq <- select(join_by_id, ID, GENE, SEQUENCE, Species, Serogroup, `Sequence Type`, `Collected Date`, `%COVERAGE`,
-                            `%IDENTITY`, Facility, Room) %>%
+                            `%IDENTITY`, Facility, Room, Source) %>%
     arrange(ID, GENE, SEQUENCE)
   list(fields = fields_with_seq, meta = meta)
 }

@@ -11,29 +11,62 @@ shinyUI(fluidPage(
   # Sidebar with several inputs for uploading and filtering data
   sidebarLayout(
     sidebarPanel(
-      fileInput("file1", "Choose virulence data file",
-                accept = c(
-                  "application/vnd.ms-excel",
-                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                  ".xls",
-                  ".xlsx")
-      ),
+      tags$h4("Choose data files"),
+      fluidRow(column(6, fileInput("db_file", "Database",
+                        accept = c(
+                          "application/vnd.ms-excel",
+                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                          ".xls",
+                          ".xlsx")
+                       )),
+               column(6, fileInput("link_file", "Linkage",
+                        accept = c(
+                          "application/vnd.ms-excel",
+                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                          ".xls",
+                          ".xlsx")
+                     ))),
+        fileInput("meta_file", "Metadata",
+                      accept = c(
+                        "application/vnd.ms-excel",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        ".xls",
+                        ".xlsx")
+                     ),
+      # fileInput("file1", "Choose database file",
+      #           accept = c(
+      #             "application/vnd.ms-excel",
+      #             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      #             ".xls",
+      #             ".xlsx")),
+      # fileInput("file3", "Choose linkage file",
+      #           accept = c(
+      #             "application/vnd.ms-excel",
+      #             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      #             ".xls",
+      #             ".xlsx")),
+      # fileInput("file4", "Choose metadata file",
+      #           accept = c(
+      #             "application/vnd.ms-excel",
+      #             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      #             ".xls",
+      #             ".xlsx")),
       tags$h4("Filter by"),
-      selectInput("species", "Species", multiple = TRUE,
-                  c("All" = "")),
-      fluidRow(column(6, selectInput("serogroup", "Serogroups", multiple = TRUE,
+      fluidRow(column(6, selectInput("species", "Species", multiple = TRUE,
                                      c("All" = ""))),
-               column(6, selectInput("seq_type", "Seq. types", multiple = TRUE,
+               column(6, selectInput("serogroup", "Serogroups", multiple = TRUE,
                                      c("All" = "")))),
-      selectInput("gene", "Genes", multiple = TRUE,
-                  c("All" = "")),
+      fluidRow(column(6, selectInput("seq_type", "Seq. types", multiple = TRUE,
+                                     c("All" = ""))),
+               column(6, selectInput("gene", "Genes", multiple = TRUE,
+                                     c("All" = "")))),
       fluidRow(column(6, numericInput("coverage", "Seq Total % Coverage",
                                       min = 0.0, max = 100,
                                       value = 0.0, step = 0.5)),
                column(6, numericInput("identity", "Seq Weighted % Identity",
                                       min = 0.0, max = 100,
                                       value = 0.0, step = 0.5))),
-      numericInput("scatter_noise", "Scatter Noise (+/-)",
+      numericInput("scatter_noise", "Jitter (+/-)",
                    min = 0.0, max = 100,
                    value = 0.0, step = 0.1),
       tags$h4("Virulence hits breakdown by"),

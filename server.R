@@ -23,8 +23,8 @@ toggleDLButton <- function(key, data) {
 
 # validates the data in the input fields
 validateInput <- function(input) {
-  if (is.null(input$file1)) {
-    "Please choose a virulence data file"
+  if (is.null(input$db_file) || is.null(input$link_file) || is.null(input$meta_file)) {
+    "Please choose database, linking and metadata files"
   } else if (!is.numeric(input$coverage)) {
     "Please enter a valid number as Seq Total % Coverage"
   } else if (!is.numeric(input$identity)) {
@@ -79,8 +79,10 @@ displayCharts <- function(chart_list, prefix, output, plotUI) {
 
 shinyServer(function(input, output, session) {
   observe({
-    inFile <- input$file1
-    if (is.null(inFile)) {
+    db_file <- input$db_file
+    link_file <- input$link_file
+    meta_file <- input$meta_file
+    if (is.null(db_file) || is.null(link_file) || is.null(meta_file)) {
       toggleDLButton('download_all', NULL)
       toggleDLButton('download_genes', NULL)
       toggleDLButton('download_vir_hits', NULL)
@@ -108,7 +110,7 @@ shinyServer(function(input, output, session) {
         }
         progress$set(value = value, detail = detail)
       }
-      return_list <- getInitialData(inFile$datapath, updateProgress)
+      return_list <- getInitialData(db_file$datapath, link_file$datapath, meta_file$datapath, updateProgress)
       init_data <<- return_list$fields
       meta <<- return_list$meta
       

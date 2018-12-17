@@ -573,16 +573,19 @@ getCharts <- function(vir_hits) {
 # link various sheets in the excel file to get the final list of fields
 # (including SEQUENCE, which will be removed later); some fields are renamed 
 # to make the linking work
-getInitialData <- function(excel_file, updateProgress = NULL) {
+getInitialData <- function(db_file, link_file, meta_file, updateProgress = NULL) {
   updateProg(updateProgress, "Extracting fields from pipeline run")
-  vfdb <- read_excel(excel_file,sheet='VFDB') %>%
+  #vfdb <- read_excel(db_file,sheet='VFDB') %>%
+  vfdb <- read_excel(db_file) %>%
     select(FILE, GENE, SEQUENCE, `%COVERAGE`, `%IDENTITY`)
   updateProg(updateProgress, "Renaming fields and linking sheets")
-  linking <- read_excel(excel_file,sheet='Linking') %>% rename(FILE = File)
+  #linking <- read_excel(db_file,sheet='Linking') %>% rename(FILE = File)
+  linking <- read_excel(link_file) %>% rename(FILE = File)
   
   join_by_file <- inner_join(vfdb, linking, by = "FILE")
   
-  meta <- read_excel(excel_file,sheet='Meta')
+  #meta <- read_excel(db_file,sheet='Meta')
+  meta <- read_excel(meta_file)
   
   join_by_id <- inner_join(join_by_file, meta, by = "ID#") %>% rename(ID = 'ID#')
   
@@ -613,6 +616,9 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
     prev_id <- ""
     prev_seq <- ""
     prev_gene <- ""
+    prev_spec <- ""
+    prev_sero <- ""
+    prev_seqt <- ""
     max_cov <- -1.0
     tot_cov <- 0.0
     max_tot_cov <- -1.0
@@ -624,11 +630,13 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
     covs <- c()
     idens <- c()
     j <- 0
+    l <- 0
     new_row <- FALSE
     new_gene <- FALSE
     prev_gene_first_index <- -1
     gene_first_index <- 1
     last_index = nrow(fields_with_seq)
+    #vir_rows <- tibble()
     
     # each row in the output shows specimen id, gene name, sequence (node) name,
     # the maximum raw %COVERAGE and %IDENTITY for a node, the maximum calculated 
@@ -737,6 +745,17 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
             gene_max_wgt_iden <- -1.0
           }
         }
+        # if (prev_id != id || prev_gene != gene || prev_spec != spec || prev_sero != sero || prev_seqt != seqt) {
+        #   l <- l + 1
+        #   vir_rows[l,1] <- id
+        #   vir_rows[l,2] <- gene
+        #   vir_rows[l,3] <- spec
+        #   vir_rows[l,4] <- sero
+        #   vir_rows[l,5] <- seqt
+        #   vir_rows[l,6] <- fac
+        #   vir_rows[l,7] <- max_tot_cov
+        #   vir_rows[l,8] <- max_wgt_iden
+        # }
         max_tot_cov <- 1.0
         max_wgt_iden <- -1.0
         new_row <- FALSE
@@ -744,11 +763,16 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
       prev_id <-id
       prev_gene <- gene
       prev_seq <- seq
+      prev_spec <- spec
+      prev_sero <- sero
+      prev_seqt <- seqt
     }
     colnames(aggr_by_gene) <- c('ID', 'GENE', 'Species', 'Serogroup', 'Sequence Type',
-                                'Facility', 'SEQUENCE', 'SEQ MAX %COVERAGE', 'SEQ MAX %IDENTITY', 
+                                'Facility', 'SEQUENCE', 'SEQ MAX %COVERAGE', 'SEQ MAX %IDENTITY',
                                 'SEQ TOTAL %COVERAGE',  'SEQ WEIGHTED %IDENTITY',
                                 'GENE MAX TOTAL %COVERAGE', 'GENE MAX WEIGHTED %IDENTITY')
+    # colnames(vir_rows) <- c('ID','GENE', 'Species', 'Serogroup', 'Sequence Type', 'Facility', 
+    #                         'SEQ TOTAL %COVERAGE', 'SEQ WEIGHTED %IDENTITY')
   }
   #filter by %coverage and/or %identity
   updateProg(updateProgress, "Filtering by %coverage")
@@ -758,6 +782,7 @@ getFilteredData <- function(fields_with_seq, meta, species = NULL, serogroup = N
   
   fields_with_seq <- select(fields_with_seq, -SEQUENCE)
   vir_data <- getVirulenceData(aggr_by_gene, meta, show_spec, show_sero, show_seq_type)
+  #vir_data <- getVirulenceData(vir_rows, meta, show_spec, show_sero, show_seq_type)
   fisher_exact_vals <- getAllFisherExactVals(vir_data$vir_hits)
   charts <- getCharts(vir_data$vir_hits)
   plots <- getPlots(vir_data$vir_rows, scatter_noise)
